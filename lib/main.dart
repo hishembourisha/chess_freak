@@ -1,20 +1,19 @@
-// main.dart - Fixed to respect Remove Ads purchase with proper initialization order
+// File: lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:sudoku_app/screens/home_screen.dart';
-import 'package:sudoku_app/services/ads_service.dart';
-import 'package:sudoku_app/services/iap_service.dart';
-import 'package:sudoku_app/services/ad_helper.dart'; // FIXED: Import updated AdHelper
-import '../services/sound_service.dart';
-import '../services/vibration_service.dart';
+import 'screens/home_screen.dart';
+import 'services/ads_service.dart';
+import 'services/iap_service.dart'; 
+import 'helpers/ad_helper.dart';
+import 'services/sound_service.dart';
+import 'services/vibration_service.dart';
 import 'package:flutter/foundation.dart';
 
 void main() async {
-  // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Load environment variables for ad unit IDs
   try {
     await dotenv.load(fileName: ".env");
     print('✅ Environment variables loaded');
@@ -23,21 +22,20 @@ void main() async {
     print('📱 Using test ad unit IDs');
   }
   
-  // Set preferred orientations (portrait only for better Sudoku experience)
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
   
-  // Initialize services with proper order
   await _initializeServices();
   
-  // Run the app
-  runApp(const SudokuApp());
+  runApp(const ChessFreakApp());
 }
 
 Future<void> _initializeServices() async {
-  // 1. Initialize basic services first
+  print('\n=== 🔧 Initializing Chess Freak Services ===');
+  
+  // Initialize Sound Service
   try {
     await SoundService.initialize();
     print('✅ Sound service initialized');
@@ -45,6 +43,7 @@ Future<void> _initializeServices() async {
     print('❌ Failed to initialize sound: $e');
   }
   
+  // Initialize Vibration Service
   try {
     await VibrationService.initialize();
     print('✅ Vibration service initialized');
@@ -52,18 +51,15 @@ Future<void> _initializeServices() async {
     print('❌ Failed to initialize vibration: $e');
   }
   
-  // 2. CRITICAL: Initialize IAP service FIRST to load purchase state
+  // Initialize IAP Service (for Remove Ads)
   try {
     await IAPService.initialize();
     print('✅ IAP service initialized');
-    
-    // Give IAP service time to process any pending purchases
-    await Future.delayed(const Duration(milliseconds: 500));
   } catch (e) {
     print('❌ Failed to initialize IAP: $e');
   }
   
-  // 3. Initialize AdHelper after IAP service has loaded purchase state
+  // Initialize Ad Helper
   try {
     await AdHelper.initialize();
     print('✅ AdHelper initialized');
@@ -71,7 +67,7 @@ Future<void> _initializeServices() async {
     print('❌ Failed to initialize AdHelper: $e');
   }
   
-  // 4. FIXED: Only initialize ads service for free users AFTER checking purchase state
+  // Initialize Ads Service (only if user should see ads)
   try {
     if (AdHelper.shouldShowAds()) {
       await AdsService.initialize();
@@ -83,55 +79,64 @@ Future<void> _initializeServices() async {
     print('❌ Failed to initialize ads: $e');
   }
   
-  // 5. Final debug output (only in debug mode)
   if (kDebugMode) {
-    print('\n=== 🔧 Service Initialization Complete ===');
+    print('\n=== 🎯 Chess Freak Ready ===');
     SoundService.debugSoundState();
     AdHelper.debugAdStatus();
-    IAPService.debugIAPStatus();
-    print('=========================================\n');
+    IAPService.debugIAPStatus(); 
+    print('===========================\n');
   }
 }
 
-class SudokuApp extends StatelessWidget {
-  const SudokuApp({super.key});
+class ChessFreakApp extends StatelessWidget {
+  const ChessFreakApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sudoku Freak',
+      title: 'Chess Freak',
       debugShowCheckedModeBanner: false,
       
-      // Enhanced theme
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: MaterialColor(
+          0xFF8D6E63, // Brown theme for chess
+          <int, Color>{
+            50: const Color(0xFFF3E5AB),
+            100: const Color(0xFFEFDECD),
+            200: const Color(0xFFD7CCC8),
+            300: const Color(0xFFBCAAA4),
+            400: const Color(0xFFA1887F),
+            500: const Color(0xFF8D6E63),
+            600: const Color(0xFF8D6E63),
+            700: const Color(0xFF6D4C41),
+            800: const Color(0xFF5D4037),
+            900: const Color(0xFF3E2723),
+          },
+        ),
         useMaterial3: true,
         
-        // Custom font family
-        fontFamily: 'Roboto Condensed', // Bold, game-like font
+        fontFamily: 'Roboto Condensed',
         
-        // Color scheme
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: Colors.brown,
           brightness: Brightness.light,
         ),
         
-        // AppBar theme
-        appBarTheme: const AppBarTheme(
+        appBarTheme: AppBarTheme(
           centerTitle: true,
           elevation: 0,
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.black87,
-          titleTextStyle: TextStyle(
+          backgroundColor: Colors.brown[600],
+          foregroundColor: Colors.white,
+          titleTextStyle: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: Colors.white,
             fontFamily: 'Roboto Condensed',
             letterSpacing: 1.0,
           ),
+          systemOverlayStyle: SystemUiOverlayStyle.light,
         ),
         
-        // Button themes
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             elevation: 2,
@@ -140,11 +145,62 @@ class SudokuApp extends StatelessWidget {
               fontWeight: FontWeight.bold,
               letterSpacing: 0.5,
             ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
+        ),
+        
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          filled: true,
+          fillColor: Colors.grey[50],
+        ),
+        
+        dialogTheme: DialogThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 8,
+        ),
+        
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        
+        // Chess-specific styling
+        iconTheme: IconThemeData(
+          color: Colors.brown[700],
+        ),
+        
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return Colors.brown;
+            }
+            return Colors.grey;
+          }),
+          trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return Colors.brown.withValues(alpha: 0.5);
+            }
+            return Colors.grey.withValues(alpha: 0.3);
+          }),
         ),
       ),
       
-      // Home screen
       home: const HomeScreen(),
     );
   }

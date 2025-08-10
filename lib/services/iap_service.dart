@@ -1,4 +1,4 @@
-// lib/services/iap_service.dart - Fixed version without circular dependency
+// lib/services/iap_service.dart - Chess version (Remove Ads only)
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
@@ -14,32 +14,11 @@ class IAPService {
   // Shared preference key - same as used by AdHelper
   static const String _adsRemovedKey = 'ads_removed';
 
-  // Product IDs - these should match your Google Play Console / App Store Connect
-  static const String removeAdsProductId = 'remove_ads_sudoku';
-  static const String hintPack5ProductId = 'hint_pack_5';
-  
-  // Hint store product IDs (from your hint store)
-  static const String hintPack200ProductId = 'hint_pack_200';
-  static const String hintPack500ProductId = 'hint_pack_500';
-  static const String hintPack1000ProductId = 'hint_pack_1000';
-  static const String hintPackUnlimitedProductId = 'hint_pack_unlimited';
+  // Product ID for Remove Ads - update this to match your Google Play Console
+  static const String removeAdsProductId = 'remove_ads_chess_freak';
   
   static const Set<String> _productIds = {
     removeAdsProductId,
-    hintPack5ProductId,
-    hintPack200ProductId,
-    hintPack500ProductId,
-    hintPack1000ProductId,
-    hintPackUnlimitedProductId,
-  };
-
-  // Map product IDs to hint amounts
-  static const Map<String, int> _hintAmounts = {
-    hintPack5ProductId: 5,
-    hintPack200ProductId: 200,
-    hintPack500ProductId: 500,
-    hintPack1000ProductId: 1000,
-    hintPackUnlimitedProductId: 2500,
   };
 
   // Getters
@@ -142,13 +121,6 @@ class IAPService {
         _isAdsRemoved = true;
         
         if (kDebugMode) print('✅ Ads removed successfully - SharedPreferences updated');
-        
-      } else if (_hintAmounts.containsKey(productId)) {
-        // Handle hint purchases
-        int currentHints = prefs.getInt('hint_balance') ?? 0;
-        int hintsToAdd = _hintAmounts[productId]!;
-        await prefs.setInt('hint_balance', currentHints + hintsToAdd);
-        if (kDebugMode) print('✅ $hintsToAdd hints added (total: ${currentHints + hintsToAdd})');
       }
     } catch (e) {
       if (kDebugMode) print('❌ Error handling purchase: $e');
@@ -182,54 +154,38 @@ class IAPService {
     }
   }
 
-  /// Generic purchase method for any product ID
-  static Future<bool> purchaseProduct(String productId) async {
+  /// Purchase Remove Ads
+  static Future<bool> purchaseRemoveAds() async {
     if (!_isAvailable) {
       // Debug fallback - grant purchase for testing
       if (kDebugMode) {
-        await _debugGrantProduct(productId);
+        await debugGrantRemoveAds();
         return true;
       }
       throw Exception('In-app purchases not available');
     }
 
     try {
-      if (kDebugMode) print('🛒 Starting purchase for product: $productId');
+      if (kDebugMode) print('🛒 Starting purchase for Remove Ads');
       
       final products = await getProducts();
-      final product = products.where((p) => p.id == productId).firstOrNull;
+      final product = products.where((p) => p.id == removeAdsProductId).firstOrNull;
       
       if (product == null) {
-        throw Exception('Product $productId not found. Check your product ID in Google Play Console.');
+        throw Exception('Remove Ads product not found. Check your product ID in Google Play Console.');
       }
 
       final PurchaseParam purchaseParam = PurchaseParam(productDetails: product);
       
-      bool success;
-      if (productId == removeAdsProductId) {
-        // Non-consumable purchase (one-time purchase)
-        success = await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-      } else {
-        // Consumable purchase (can be purchased multiple times)
-        success = await _inAppPurchase.buyConsumable(purchaseParam: purchaseParam);
-      }
+      // Non-consumable purchase (one-time purchase)
+      bool success = await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
       
-      if (kDebugMode) print('🛒 Purchase initiated: $success');
+      if (kDebugMode) print('🛒 Remove Ads purchase initiated: $success');
       return success;
     } catch (e) {
-      if (kDebugMode) print('❌ Purchase failed for $productId: $e');
+      if (kDebugMode) print('❌ Remove Ads purchase failed: $e');
       rethrow;
     }
-  }
-
-  /// Purchase remove ads (convenience method)
-  static Future<bool> purchaseRemoveAds() async {
-    return await purchaseProduct(removeAdsProductId);
-  }
-
-  /// Purchase hint pack (convenience method)
-  static Future<bool> purchaseHintPack() async {
-    return await purchaseProduct(hintPack5ProductId);
   }
 
   /// Restore previous purchases
@@ -248,41 +204,15 @@ class IAPService {
     }
   }
 
-  /// Debug method to grant purchases for testing
-  static Future<void> _debugGrantProduct(String productId) async {
-    if (!kDebugMode) return; // Only in debug mode
-    
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      if (productId == removeAdsProductId) {
-        await prefs.setBool(_adsRemovedKey, true);
-        _isAdsRemoved = true;
-        print('🐛 DEBUG: Ads removed granted for testing');
-      } else if (_hintAmounts.containsKey(productId)) {
-        int currentHints = prefs.getInt('hint_balance') ?? 0;
-        int hintsToAdd = _hintAmounts[productId]!;
-        await prefs.setInt('hint_balance', currentHints + hintsToAdd);
-        print('🐛 DEBUG: $hintsToAdd hints granted for testing (total: ${currentHints + hintsToAdd})');
-      }
-    } catch (e) {
-      print('❌ Debug grant failed: $e');
-    }
-  }
-
-  /// Debug method to test purchases without real money (for development)
+  /// Debug method to grant Remove Ads for testing
   static Future<void> debugGrantRemoveAds() async {
-    await _debugGrantProduct(removeAdsProductId);
-  }
-
-  static Future<void> debugGrantHints(int count) async {
     if (!kDebugMode) return; // Only in debug mode
     
     try {
       final prefs = await SharedPreferences.getInstance();
-      int currentHints = prefs.getInt('hint_balance') ?? 0;
-      await prefs.setInt('hint_balance', currentHints + count);
-      print('🐛 DEBUG: $count hints granted for testing (total: ${currentHints + count})');
+      await prefs.setBool(_adsRemovedKey, true);
+      _isAdsRemoved = true;
+      print('🐛 DEBUG: Remove Ads granted for testing');
     } catch (e) {
       print('❌ Debug grant failed: $e');
     }
@@ -301,8 +231,7 @@ class IAPService {
       print('Initialized: $_isInitialized');
       print('Available: $_isAvailable');
       print('Ads Removed: $_isAdsRemoved');
-      print('Product IDs: $_productIds');
-      print('Hint Amounts: $_hintAmounts');
+      print('Product ID: $removeAdsProductId');
       print('==========================');
     }
   }

@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/iap_service.dart';
-import '../services/ad_helper.dart'; // ADDED: Import AdHelper
+import '../helpers/ad_helper.dart'; // ADDED: Import AdHelper
 import '../services/sound_service.dart';
 import '../services/vibration_service.dart';
-import '../screens/hint_store_screen.dart';
 import 'package:flutter/foundation.dart';
 import '../services/ad_timer_service.dart';
 import '../services/ads_service.dart';
+import 'dart:async';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,7 +22,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _soundEnabled = true;
   bool _musicEnabled = true; 
   bool _vibrationEnabled = true;
-  int _hintBalance = 0;
   bool _isLoading = false;
   bool _adsRemoved = false;
   String _removeAdsPrice = 'Loading...';
@@ -58,7 +57,6 @@ Future<void> _loadSettings() async {
       _soundEnabled = SoundService.isSoundEnabled;
       _musicEnabled = SoundService.isMusicEnabled;
       _vibrationEnabled = VibrationService.isVibrationEnabled;
-      _hintBalance = prefs.getInt('hint_balance') ?? 3;
       
       // CRITICAL FIX: Check SharedPreferences directly
       _adsRemoved = prefs.getBool('ads_removed') ?? false;
@@ -113,20 +111,6 @@ Future<void> _loadSettings() async {
     }
   }
 
-  void _navigateToHintStore() {
-    VibrationService.buttonPressed();
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const HintStoreScreen(),
-      ),
-    ).then((_) {
-      // Refresh hint balance when returning from store
-      _loadSettings();
-    });
-  }
-
   // Load remove ads price
   Future<void> _loadRemoveAdsPrice() async {
     try {
@@ -177,10 +161,9 @@ Future<void> _loadSettings() async {
     }
   }
 
-  // Purchase Remove Ads - FIXED: Properly update AdHelper state
+  // Purchase Remove Ads - FIXED: Remove the immediate check that causes false error
   Future<void> _purchaseRemoveAds() async {
     VibrationService.buttonPressed();
-
     setState(() => _isLoading = true);
 
     try {
@@ -211,36 +194,30 @@ Future<void> _loadSettings() async {
 
       // Close loading dialog
       if (mounted) Navigator.of(context).pop();
-
       if (!mounted) return;
 
       if (purchaseSuccessful) {
-      // ONLY if IAP service confirms the purchase was successful
-      // AND it has already written to SharedPreferences
-      
-      // Verify the purchase was actually saved
-      final prefs = await SharedPreferences.getInstance();
-      bool actuallyPurchased = prefs.getBool('ads_removed') ?? false;
-      
-      if (actuallyPurchased) {
-        // Payment confirmed and saved - proceed
-        await AdHelper.refreshStatus();
-        AdTimerService.stopAdTimer();
-        AdsService.dispose();
-        setState(() => _adsRemoved = true);
-        VibrationService.medium(); // Success vibration
-        _showRemoveAdsSuccessDialog();
+        // FIXED: Don't check SharedPreferences immediately!
+        // Just show that purchase was initiated and start checking for completion
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Purchase initiated successfully. Complete the purchase in Google Play.'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Start checking for completion
+        _checkForPurchaseCompletion();
       } else {
-        // Payment failed to save - show error
-        _showErrorSnackBar('Purchase failed to complete. Please try again.');
+        VibrationService.errorEntry();
+        _showErrorSnackBar('Failed to initiate purchase. Please try again.');
       }
-    }
 
     } catch (e) {
       if (mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-
       VibrationService.errorEntry();
       _showErrorSnackBar('Purchase failed: ${e.toString()}');
     } finally {
@@ -248,6 +225,38 @@ Future<void> _loadSettings() async {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  // Check for purchase completion and handle ad removal
+  void _checkForPurchaseCompletion() {
+    Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      // Check if purchase completed
+      final prefs = await SharedPreferences.getInstance();
+      bool adsRemoved = prefs.getBool('ads_removed') ?? false;
+
+      if (adsRemoved && !_adsRemoved) {
+        // Purchase completed! Now do the ad cleanup
+        timer.cancel();
+        
+        // Payment confirmed and saved - proceed
+        await AdHelper.refreshStatus();
+        AdTimerService.stopAdTimer();
+        AdsService.dispose();
+        setState(() => _adsRemoved = true);
+        VibrationService.medium(); // Success vibration
+        _showRemoveAdsSuccessDialog();
+      }
+
+      // Stop checking after 2 minutes
+      if (timer.tick > 60) {
+        timer.cancel();
+      }
+    });
   }
 
   // Success dialog for remove ads
@@ -292,106 +301,6 @@ Future<void> _loadSettings() async {
     );
   }
 
-  Future<void> _restorePurchases() async {
-    setState(() => _isLoading = true);
-
-    try {
-      if (!IAPService.isAvailable) {
-        _showErrorSnackBar('In-app purchases not available on this device');
-        return;
-      }
-
-      await IAPService.restorePurchases();
-
-      // FIXED: Refresh both IAP and AdHelper status after restore
-      await AdHelper.refreshStatus();
-      await _loadSettings();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Purchases restored.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      _showErrorSnackBar('Failed to restore purchases: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _buyHintPack() async {
-    // Add haptic feedback
-    VibrationService.buttonPressed();
-
-    setState(() => _isLoading = true);
-
-    try {
-      if (!IAPService.isAvailable) {
-        _showDeviceNotSupportedDialog();
-        return;
-      }
-
-      // Show loading dialog
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Processing purchase...'),
-              ],
-            ),
-          ),
-        );
-      }
-
-      bool purchaseSuccessful = await IAPService.purchaseHintPack();
-
-      // Close loading dialog
-      if (mounted) Navigator.of(context).pop();
-
-      if (!mounted) return;
-
-      if (purchaseSuccessful) {
-        // Reload hint balance
-        final prefs = await SharedPreferences.getInstance();
-        setState(() => _hintBalance = prefs.getInt('hint_balance') ?? 3);
-
-        VibrationService.medium(); // Success vibration
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('5 hints added to your balance!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        VibrationService.errorEntry(); // Error vibration
-        _showErrorSnackBar('Purchase was cancelled or failed.');
-      }
-    } catch (e) {
-      // Close loading dialog if still open
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-
-      VibrationService.errorEntry(); // Error vibration
-      _showErrorSnackBar('Purchase failed: ${e.toString()}');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
   void _showDeviceNotSupportedDialog() {
     showDialog(
       context: context,
@@ -414,15 +323,6 @@ Future<void> _loadSettings() async {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('OK'),
           ),
-          if (kDebugMode) // Show debug options in debug mode regardless of IAP availability
-            TextButton(
-              onPressed: () async {
-                Navigator.of(context).pop();
-                await IAPService.debugGrantHints(5);
-                await _loadSettings(); // Reload to show changes
-              },
-              child: const Text('Debug Grant Hints'),
-            ),
         ],
       ),
     );
@@ -594,26 +494,6 @@ Future<void> _loadSettings() async {
                                 child: Text(_removeAdsPrice == 'Loading...' ? 'Loading...' : 'Remove'),
                               ),
                       ),
-                      const Divider(),
-                      // Hints Section
-                      ListTile(
-                        leading: const Icon(Icons.lightbulb_outline),
-                        title: const Text('Hints Balance'),
-                        subtitle: Text('You have $_hintBalance hints'),
-                        trailing: ElevatedButton(
-                          onPressed: _isLoading ? null : () => _navigateToHintStore(),
-                          child: const Text('Buy Hints'),
-                        ),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.refresh),
-                        title: const Text('Restore Purchases'),
-                        subtitle: const Text('Restore previous purchases'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.refresh),
-                          onPressed: _isLoading ? null : _restorePurchases,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -678,19 +558,6 @@ Future<void> _loadSettings() async {
                               await AdHelper.refreshStatus();
                               await _loadSettings();
                               _showErrorSnackBar('Debug: Remove Ads granted');
-                            },
-                            child: const Text('Grant'),
-                          ),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.lightbulb),
-                          title: const Text('Debug Grant 10 Hints'),
-                          subtitle: const Text('Grant hints for testing'),
-                          trailing: ElevatedButton(
-                            onPressed: _isLoading ? null : () async {
-                              await IAPService.debugGrantHints(10);
-                              await _loadSettings();
-                              _showErrorSnackBar('Debug: 10 hints granted');
                             },
                             child: const Text('Grant'),
                           ),

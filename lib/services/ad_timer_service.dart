@@ -1,12 +1,12 @@
-// lib/services/ad_timer_service.dart - Fixed for Remove Ads users
+// lib/services/ad_timer_service.dart - Chess-optimized ad timing
 import 'dart:async';
 import 'ads_service.dart';
-import 'ad_helper.dart'; // ADDED: For Remove Ads logic
+import '../helpers/ad_helper.dart'; // CORRECT: AdHelper is in helpers folder
 
 class AdTimerService {
   static Timer? _adTimer;
   static DateTime? _lastAdShown;
-  static const int _adIntervalMinutes = 5; // Show ad every 5 minutes
+  static const int _adIntervalMinutes = 10; // CHANGED: 10 minutes for chess (longer sessions)
   
   // FIXED: Only start timer for free users
   static void startAdTimer() {
@@ -20,7 +20,7 @@ class AdTimerService {
     _adTimer = Timer.periodic(Duration(minutes: _adIntervalMinutes), (timer) {
       _showTimedAd();
     });
-    print('⏰ Ad timer started for free user');
+    print('⏰ Ad timer started for free user (${_adIntervalMinutes}min intervals)');
   }
   
   static void _showTimedAd() async {
@@ -40,7 +40,7 @@ class AdTimerService {
     try {
       await AdsService.showInterstitialAd();
       _lastAdShown = DateTime.now();
-      print('🎯 Timed interstitial ad shown');
+      print('🎯 Timed interstitial ad shown (chess game)');
     } catch (e) {
       print('⚠️ Failed to show timed ad: $e');
     }
@@ -63,6 +63,22 @@ class AdTimerService {
     print('⏸️ Ad timer paused');
   }
   
+  // Method to show ad between chess games
+  static void showGameTransitionAd() async {
+    if (!AdHelper.shouldShowAds()) {
+      print('🚫 Game transition ad skipped - user has Remove Ads');
+      return;
+    }
+    
+    try {
+      await AdsService.showInterstitialAd();
+      _lastAdShown = DateTime.now();
+      print('🎯 Game transition ad shown');
+    } catch (e) {
+      print('⚠️ Failed to show game transition ad: $e');
+    }
+  }
+  
   // ADDED: Method to check timer status
   static bool get isTimerActive {
     return _adTimer != null && _adTimer!.isActive;
@@ -70,10 +86,11 @@ class AdTimerService {
   
   // ADDED: Debug method
   static void debugTimerStatus() {
-    print('=== ⏰ Ad Timer Status ===');
+    print('=== ⏰ Chess Ad Timer Status ===');
     print('Should Show Ads: ${AdHelper.shouldShowAds()}');
     print('Timer Active: $isTimerActive');
+    print('Interval: ${_adIntervalMinutes} minutes');
     print('Last Ad Shown: $_lastAdShown');
-    print('=========================');
+    print('===============================');
   }
 }

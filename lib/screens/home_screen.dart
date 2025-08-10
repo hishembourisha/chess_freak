@@ -1,16 +1,15 @@
-// lib/screens/home_screen.dart - Fixed for Remove Ads users with proper state management
+// File: lib/screens/home_screen.dart - Updated with Sudoku-inspired navigation
+
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:sudoku_app/screens/game_screen.dart';
-import 'package:sudoku_app/screens/settings_screen.dart';
-import 'package:sudoku_app/services/ads_service.dart';
-import 'package:sudoku_app/services/ad_helper.dart'; // For Remove Ads logic
-import 'package:sudoku_app/services/sudoku_generator.dart';
-import 'package:sudoku_app/services/game_save_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../screens/chess_game_screen.dart';
+import '../screens/settings_screen.dart';
+import '../services/ads_service.dart';
+import '../helpers/ad_helper.dart';
+import '../services/chess_save_service.dart';
 import '../services/sound_service.dart';
 import '../services/vibration_service.dart';
-import '../widgets/resume_game_dialog.dart';
+import '../services/chess_engine.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasSavedGame = false;
   Map<String, dynamic>? _savedGameInfo;
   bool _isLoading = false;
-  bool _adsRemoved = false; // ADDED: Track ads status
+  bool _adsRemoved = false;
 
   @override
   void initState() {
@@ -31,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _initializeServices();
     _checkForSavedGame();
-    _loadAdStatus(); // ADDED: Load ad status
+    _loadAdStatus();
   }
 
   @override
@@ -40,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  // ADDED: Load ad status when screen initializes
   Future<void> _loadAdStatus() async {
     try {
       await AdHelper.refreshStatus();
@@ -56,10 +54,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _initializeServices() async {
     try {
-      // FIXED: Refresh ad status before initializing ads
       await AdHelper.refreshStatus();
       
-      // Only show banner ads for free users
       if (AdHelper.canShowBannerAd()) {
         await AdsService.showBannerAd();
         print('✅ Banner ad initialized for free user');
@@ -72,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         AdsService.debugAdConfiguration();
         SoundService.debugSoundState();
-        AdHelper.debugAdStatus(); // ADDED: Debug ad status
+        AdHelper.debugAdStatus();
       }
     } catch (e) {
       print('❌ Error initializing services in HomeScreen: $e');
@@ -97,7 +93,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           SoundService.resumeBackgroundMusic();
         }
         _checkForSavedGame();
-        // ADDED: Refresh ad status when app resumes (in case user made purchase)
         _loadAdStatus();
         break;
       default:
@@ -107,12 +102,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _checkForSavedGame() async {
     try {
-      print('🔍 Checking for saved game...');
-      final hasSaved = await GameSaveService.hasSavedGame();
+      print('🔍 Checking for saved chess game...');
+      final hasSaved = await ChessSaveService.hasSavedGame();
       print('📂 Has saved game: $hasSaved');
       
       if (hasSaved) {
-        final gameInfo = await GameSaveService.getSavedGameInfo();
+        final gameInfo = await ChessSaveService.getSavedGameInfo();
         print('📊 Game info: $gameInfo');
         
         if (mounted) {
@@ -161,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                        'SUDOKU FREAK',
+                        'CHESS FREAK',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 32,
@@ -172,33 +167,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             Shadow(
                               offset: Offset(2, 2),
                               blurRadius: 4,
-                              color: Colors.grey,
+                              color: Color(0xFF9E9E9E),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 20),
                       
-                      Image.asset(
-                        'assets/icon/icon_in_app.png',
-                        width: 300,
-                        height: 300,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.grid_3x3,
-                            size: 150,
-                            color: Colors.blue.shade300,
-                          );
-                        },
+                      Container(
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          color: Colors.brown[600],
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 15,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.sports_esports,
+                          size: 150,
+                          color: Colors.white,
+                        ),
                       ),
                       const SizedBox(height: 40),
 
-                      // Resume game button (if saved game exists)
                       if (_hasSavedGame && _savedGameInfo != null) ...[
                         Card(
                           elevation: 4,
-                          color: Colors.blue.shade50,
+                          color: Colors.brown.shade50,
                           child: InkWell(
                             onTap: _isLoading ? null : () => _showResumeDialog(),
                             borderRadius: BorderRadius.circular(12),
@@ -207,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
                                 gradient: LinearGradient(
-                                  colors: [Colors.blue.withOpacity(0.1), Colors.blue.withOpacity(0.05)],
+                                  colors: [Colors.brown.withOpacity(0.1), Colors.brown.withOpacity(0.05)],
                                   begin: Alignment.centerLeft,
                                   end: Alignment.centerRight,
                                 ),
@@ -217,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: _isLoading ? Colors.grey : Colors.blue,
+                                      color: _isLoading ? Colors.grey : Colors.brown,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: _isLoading 
@@ -237,16 +237,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          _isLoading ? 'Loading...' : 'Resume Game',
+                                          _isLoading ? 'Loading...' : 'Resume Chess Game',
                                           style: TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold,
-                                            color: _isLoading ? Colors.grey : Colors.blue,
+                                            color: _isLoading ? Colors.grey : Colors.brown,
                                           ),
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${_savedGameInfo!['difficulty']} • ${GameSaveService.getTimeAgo(_savedGameInfo!['timestamp'])}',
+                                          '${_getDifficultyDisplayName(_savedGameInfo!['difficulty'])} • ${_getTimeAgo(_savedGameInfo!['timestamp'])}',
                                           style: TextStyle(
                                             fontSize: 14,
                                             color: Colors.grey[600],
@@ -254,11 +254,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          'Hints: ${_savedGameInfo!['hintsUsed']} • Errors: ${_savedGameInfo!['errorCount']}/3',
+                                          'Moves: ${_savedGameInfo!['moveCount']} • Playing as ${_savedGameInfo!['playerColor']}',
                                           style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
-                                            color: _isLoading ? Colors.grey : Colors.blue,
+                                            color: _isLoading ? Colors.grey : Colors.brown,
                                           ),
                                         ),
                                       ],
@@ -266,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ),
                                   Icon(
                                     Icons.arrow_forward_ios,
-                                    color: _isLoading ? Colors.grey : Colors.blue,
+                                    color: _isLoading ? Colors.grey : Colors.brown,
                                     size: 16,
                                   ),
                                 ],
@@ -289,41 +289,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 20),
                       
-                      // Difficulty buttons
-                      _buildDifficultyCard('easy', 'Easy', Colors.green, Icons.sentiment_satisfied),
+                      _buildDifficultyCard(Difficulty.beginner, 'Easy', 'Perfect for learning chess basics', Colors.green, Icons.sentiment_satisfied),
                       const SizedBox(height: 12),
-                      _buildDifficultyCard('medium', 'Medium', Colors.orange, Icons.sentiment_neutral),
+                      _buildDifficultyCard(Difficulty.intermediate, 'Medium', 'Good challenge for casual players', Colors.orange, Icons.sentiment_neutral),
                       const SizedBox(height: 12),
-                      _buildDifficultyCard('hard', 'Hard', Colors.red, Icons.sentiment_very_dissatisfied),
+                      _buildDifficultyCard(Difficulty.advanced, 'Hard', 'Challenging for experienced players', Colors.red, Icons.sentiment_very_dissatisfied),
                       const SizedBox(height: 30),
                       
-                      // Secondary buttons
                       OutlinedButton.icon(
                         icon: const Icon(Icons.settings),
                         label: const Text('Settings'),
                         onPressed: _isLoading ? null : () => _navigateToSettings(),
                       ),
-                      const SizedBox(height: 12),
-                      
-                      // FIXED: Only show "Watch Ad for Hint" for free users
-                      if (AdHelper.canShowRewardedAd())
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.lightbulb_outline),
-                          label: const Text('Watch Ad for Hint'),
-                          onPressed: _isLoading ? null : () => _watchAdForHint(),
-                        ),
-                      
-                      // ADDED: Show purchase hint option for paid users
-                      if (!AdHelper.canShowRewardedAd())
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.shopping_cart),
-                          label: const Text('Buy Hints'),
-                          onPressed: _isLoading ? null : () => _navigateToSettings(),
-                        ),
-                      
                       const SizedBox(height: 20),
                       
-                      // ADDED: Show Remove Ads status for paid users
                       if (_adsRemoved)
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -348,6 +327,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                         ),
                       
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Game Features',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildFeatureRow(Icons.speed, '3 AI Difficulty Levels'),
+                            _buildFeatureRow(Icons.visibility, 'Move Highlighting'),
+                            _buildFeatureRow(Icons.inventory, 'Captured Pieces Display'),
+                            _buildFeatureRow(Icons.smart_toy, 'Smart Chess AI'),
+                            _buildFeatureRow(Icons.save, 'Auto-save Progress'),
+                            _buildFeatureRow(Icons.music_note, 'Sound Effects'),
+                          ],
+                        ),
+                      ),
+                      
                       const SizedBox(height: 100),
                     ],
                   ),
@@ -356,7 +370,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           
-          // FIXED: Only show banner ad for free users
           if (AdHelper.canShowBannerAd()) _buildBannerAdWidget(),
         ],
       ),
@@ -398,14 +411,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildDifficultyCard(String difficultyKey, String displayName, Color color, IconData icon) {
-    final diffInfo = SudokuGenerator.getDifficultyInfo(difficultyKey);
-    final clues = 81 - diffInfo['cellsToRemove'];
-    
+  Widget _buildDifficultyCard(Difficulty difficulty, String displayName, String description, Color color, IconData icon) {
     return Card(
       elevation: 3,
       child: InkWell(
-        onTap: _isLoading ? null : () => _startGame(difficultyKey),
+        onTap: _isLoading ? null : () => _startGame(difficulty),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -442,7 +452,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      diffInfo['description'],
+                      description,
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
@@ -450,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$clues starting clues',
+                      _getDifficultySubtext(difficulty),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -472,24 +482,212 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildFeatureRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: Colors.brown[600],
+          ),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[700],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getDifficultyDisplayName(Difficulty difficulty) {
+    switch (difficulty) {
+      case Difficulty.beginner:
+        return 'Easy';
+      case Difficulty.intermediate:
+        return 'Medium';
+      case Difficulty.advanced:
+        return 'Hard';
+    }
+  }
+
+  String _getDifficultySubtext(Difficulty difficulty) {
+    switch (difficulty) {
+      case Difficulty.beginner:
+        return 'Random moves, good for learning';
+      case Difficulty.intermediate:
+        return 'Basic strategy and tactics';
+      case Difficulty.advanced:
+        return 'Advanced algorithms and planning';
+    }
+  }
+
+  String _getTimeAgo(int timestamp) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final diff = now - timestamp;
+    final minutes = diff ~/ (1000 * 60);
+    final hours = minutes ~/ 60;
+    final days = hours ~/ 24;
+    
+    if (days > 0) return '$days day${days == 1 ? '' : 's'} ago';
+    if (hours > 0) return '$hours hour${hours == 1 ? '' : 's'} ago';
+    if (minutes > 0) return '$minutes minute${minutes == 1 ? '' : 's'} ago';
+    return 'Just now';
+  }
+
+  IconData _getDifficultyIcon(Difficulty difficulty) {
+    switch (difficulty) {
+      case Difficulty.beginner:
+        return Icons.sentiment_satisfied;
+      case Difficulty.intermediate:
+        return Icons.sentiment_neutral;
+      case Difficulty.advanced:
+        return Icons.sentiment_very_dissatisfied;
+    }
+  }
+
+  Color _getDifficultyColor(Difficulty difficulty) {
+    switch (difficulty) {
+      case Difficulty.beginner:
+        return Colors.green;
+      case Difficulty.intermediate:
+        return Colors.orange;
+      case Difficulty.advanced:
+        return Colors.red;
+    }
+  }
+
   void _showResumeDialog() {
     if (_savedGameInfo != null && !_isLoading) {
-      print('🎮 Showing resume dialog for: ${_savedGameInfo!['difficulty']}');
+      print('🎮 Showing resume dialog for chess game');
       
       SoundService.playButton();
       VibrationService.buttonPressed();
       
-      ResumeGameDialog.show(
-        context,
-        gameInfo: _savedGameInfo!,
-        onResumeGame: () => _resumeSavedGame(),
-        onNewGame: () => _startNewGameDialog(),
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.save, color: Colors.blue, size: 28),
+              SizedBox(width: 8),
+              Text('Resume Chess Game?'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'You have a saved chess game in progress.',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              
+              // Game details card
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          _getDifficultyIcon(_savedGameInfo!['difficulty']),
+                          color: _getDifficultyColor(_savedGameInfo!['difficulty']),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Difficulty: ${_getDifficultyDisplayName(_savedGameInfo!['difficulty'])}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last played: ${_getTimeAgo(_savedGameInfo!['timestamp'])}',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    
+                    Row(
+                      children: [
+                        Icon(Icons.sports_esports, size: 16, color: Colors.brown[700]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Moves: ${_savedGameInfo!['moveCount']}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(width: 16),
+                        Icon(Icons.person, size: 16, color: Colors.blue[700]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Playing as: ${_savedGameInfo!['playerColor']}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              const Text(
+                'Would you like to resume this game or start a new one?',
+                style: TextStyle(fontSize: 14),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                VibrationService.buttonPressed();
+                Navigator.pop(context);
+                _startNewGameDialog();
+              },
+              child: const Text('New Game'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                VibrationService.buttonPressed();
+                Navigator.pop(context);
+                _resumeSavedGame();
+              },
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Resume'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
       );
-    } else {
-      print('⚠️ Cannot show resume dialog - loading: $_isLoading, savedGameInfo: $_savedGameInfo');
     }
   }
 
+  // UPDATED: Use navigation arguments like Sudoku
   Future<void> _resumeSavedGame() async {
     if (_isLoading) return;
     
@@ -498,12 +696,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     
     try {
-      print('📂 Loading saved game data...');
+      print('📂 Loading saved chess game data...');
       
-      final savedData = await GameSaveService.loadGame();
+      final savedData = await ChessSaveService.loadGame();
       
       if (savedData != null && mounted) {
-        print('✅ Saved game loaded successfully');
+        print('✅ Saved chess game loaded successfully');
         print('🎯 Game data: difficulty=${savedData['difficulty']}, gameTime=${savedData['gameTime']}');
         
         SoundService.playButton();
@@ -512,10 +710,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => const GameScreen(),
+            builder: (_) => const ChessGameScreen(),
             settings: RouteSettings(arguments: {
               'difficulty': savedData['difficulty'],
-              'savedData': savedData,
+              'savedGameData': savedData,
             }),
           ),
         ).then((_) {
@@ -524,11 +722,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _isLoading = false;
             });
             _checkForSavedGame();
-            _loadAdStatus(); // ADDED: Refresh ad status when returning
+            _loadAdStatus();
           }
         });
       } else {
-        print('❌ Failed to load saved game data');
+        print('❌ Failed to load saved chess game data');
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -565,27 +763,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('New Game'),
+        title: const Text('New Chess Game'),
         content: const Text('Choose difficulty for your new game:'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _startGame('easy', deleteExisting: true);
+              _startGame(Difficulty.beginner, deleteExisting: true);
             },
             child: const Text('Easy'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _startGame('medium', deleteExisting: true);
+              _startGame(Difficulty.intermediate, deleteExisting: true);
             },
             child: const Text('Medium'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _startGame('hard', deleteExisting: true);
+              _startGame(Difficulty.advanced, deleteExisting: true);
             },
             child: const Text('Hard'),
           ),
@@ -594,17 +792,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _startGame(String difficulty, {bool deleteExisting = false}) {
+  // UPDATED: Use navigation arguments like Sudoku
+  void _startGame(Difficulty difficulty, {bool deleteExisting = false}) {
     if (_isLoading) return;
     
     setState(() {
       _isLoading = true;
     });
     
-    print('🎮 Starting game with difficulty: $difficulty');
+    print('🎮 Starting chess game with difficulty: $difficulty');
     
     if (deleteExisting) {
-      GameSaveService.deleteSavedGame();
+      ChessSaveService.deleteSavedGame();
     }
     
     SoundService.playButton();
@@ -613,7 +812,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const GameScreen(),
+        builder: (_) => const ChessGameScreen(),
         settings: RouteSettings(arguments: {
           'difficulty': difficulty,
         }),
@@ -624,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _isLoading = false;
         });
         _checkForSavedGame();
-        _loadAdStatus(); // ADDED: Refresh ad status when returning
+        _loadAdStatus();
       }
     });
   }
@@ -638,46 +837,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context,
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
     ).then((_) {
-      // ADDED: Refresh ad status when returning from settings (in case user purchased Remove Ads)
       _loadAdStatus();
     });
-  }
-
-  // FIXED: Only allow rewarded ads for free users
-  void _watchAdForHint() async {
-    if (_isLoading || !AdHelper.canShowRewardedAd()) return;
-    
-    VibrationService.buttonPressed();
-    
-    try {
-      await AdsService.showRewardedAd(onReward: () async {
-        if (!mounted) return;
-        
-        final prefs = await SharedPreferences.getInstance();
-        final currentBalance = prefs.getInt('hint_balance') ?? 0;
-        await prefs.setInt('hint_balance', currentBalance + 1);
-        
-        VibrationService.medium();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('You earned 1 hint! New balance: ${currentBalance + 1}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      });
-    } catch (e) {
-      if (!mounted) return;
-      
-      VibrationService.errorEntry();
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load ad: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 }

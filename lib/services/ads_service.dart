@@ -1,9 +1,8 @@
-// Enhanced ads_service.dart - Fixed for Remove Ads users
+// lib/services/ads_service.dart - Chess-optimized ad service
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'ad_helper.dart'; // ADDED: Use AdHelper instead of manual checking
+import '../helpers/ad_helper.dart'; // CORRECT: AdHelper is in helpers folder
 import 'dart:io';
 
 class AdsService {
@@ -42,19 +41,7 @@ class AdsService {
     throw UnsupportedError('Unsupported platform');
   }
 
-  static String get _rewardedAdUnitId {
-    String? envId;
-    if (Platform.isAndroid) {
-      envId = dotenv.env['ANDROID_REWARDED_AD_UNIT_ID'];
-      if (_debugMode) print('🔍 Android Rewarded ID from env: $envId');
-      return envId ?? 'ca-app-pub-3940256099942544/5224354917'; // Test ID
-    } else if (Platform.isIOS) {
-      envId = dotenv.env['IOS_REWARDED_AD_UNIT_ID'];
-      if (_debugMode) print('🔍 iOS Rewarded ID from env: $envId');
-      return envId ?? 'ca-app-pub-3940256099942544/1712485313'; // Test ID
-    }
-    throw UnsupportedError('Unsupported platform');
-  }
+  // REMOVED: Rewarded ad methods since chess doesn't use hints/rewards
 
   static Future<void> initialize() async {
     if (_isInitialized) {
@@ -62,7 +49,7 @@ class AdsService {
       return;
     }
     
-    if (_debugMode) print('🚀 Initializing AdMob...');
+    if (_debugMode) print('🚀 Initializing AdMob for Chess Freak...');
     
     try {
       // Initialize Mobile Ads SDK
@@ -83,7 +70,6 @@ class AdsService {
       // FIXED: Only pre-load ads for free users
       if (AdHelper.shouldShowAds()) {
         await _loadInterstitialAd();
-        await _loadRewardedAd();
       } else {
         if (_debugMode) print('🚫 Skipping ad pre-loading - user has Remove Ads');
       }
@@ -112,7 +98,7 @@ class AdsService {
     // Dispose existing banner
     _bannerAd?.dispose();
     
-    if (_debugMode) print('📱 Loading banner ad...');
+    if (_debugMode) print('📱 Loading banner ad for chess...');
     
     _bannerAd = BannerAd(
       adUnitId: _bannerAdUnitId,
@@ -120,21 +106,21 @@ class AdsService {
       request: const AdRequest(),
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          if (_debugMode) print('✅ Banner ad loaded successfully');
+          if (_debugMode) print('✅ Chess banner ad loaded successfully');
         },
         onAdFailedToLoad: (ad, error) {
-          if (_debugMode) print('❌ Banner ad failed to load: $error');
+          if (_debugMode) print('❌ Chess banner ad failed to load: $error');
           ad.dispose();
           _bannerAd = null;
         },
         onAdOpened: (ad) {
-          if (_debugMode) print('👆 Banner ad opened');
+          if (_debugMode) print('👆 Chess banner ad opened');
         },
         onAdClosed: (ad) {
-          if (_debugMode) print('👋 Banner ad closed');
+          if (_debugMode) print('👋 Chess banner ad closed');
         },
         onAdClicked: (ad) {
-          if (_debugMode) print('🖱️ Banner ad clicked');
+          if (_debugMode) print('🖱️ Chess banner ad clicked');
         },
       ),
     );
@@ -155,7 +141,7 @@ class AdsService {
       return;
     }
     
-    if (_debugMode) print('📺 Loading interstitial ad...');
+    if (_debugMode) print('📺 Loading interstitial ad for chess...');
     
     try {
       await InterstitialAd.load(
@@ -165,10 +151,10 @@ class AdsService {
           onAdLoaded: (ad) {
             _interstitialAd = ad;
             _interstitialAd!.setImmersiveMode(true);
-            if (_debugMode) print('✅ Interstitial ad loaded successfully');
+            if (_debugMode) print('✅ Chess interstitial ad loaded successfully');
           },
           onAdFailedToLoad: (error) {
-            if (_debugMode) print('❌ Interstitial ad failed to load: $error');
+            if (_debugMode) print('❌ Chess interstitial ad failed to load: $error');
             _interstitialAd = null;
           },
         ),
@@ -192,14 +178,14 @@ class AdsService {
       return;
     }
 
-    if (_debugMode) print('📺 Showing interstitial ad...');
+    if (_debugMode) print('📺 Showing chess interstitial ad...');
 
     _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {
-        if (_debugMode) print('✅ Interstitial ad showed');
+        if (_debugMode) print('✅ Chess interstitial ad showed');
       },
       onAdDismissedFullScreenContent: (ad) {
-        if (_debugMode) print('👋 Interstitial ad dismissed');
+        if (_debugMode) print('👋 Chess interstitial ad dismissed');
         ad.dispose();
         _interstitialAd = null;
         // FIXED: Only reload if ads should still be shown
@@ -208,7 +194,7 @@ class AdsService {
         }
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
-        if (_debugMode) print('❌ Interstitial ad failed to show: $error');
+        if (_debugMode) print('❌ Chess interstitial ad failed to show: $error');
         ad.dispose();
         _interstitialAd = null;
         if (AdHelper.canShowInterstitialAd()) {
@@ -216,7 +202,7 @@ class AdsService {
         }
       },
       onAdImpression: (ad) {
-        if (_debugMode) print('👁️ Interstitial ad impression recorded');
+        if (_debugMode) print('👁️ Chess interstitial ad impression recorded');
       },
     );
 
@@ -227,95 +213,9 @@ class AdsService {
     }
   }
 
-  static Future<void> _loadRewardedAd() async {
-    // FIXED: Use AdHelper
-    if (!AdHelper.canShowRewardedAd()) {
-      if (_debugMode) print('🚫 Rewarded ad skipped - user has Remove Ads');
-      return;
-    }
-    
-    if (_debugMode) print('🎁 Loading rewarded ad...');
-    
-    try {
-      await RewardedAd.load(
-        adUnitId: _rewardedAdUnitId,
-        request: const AdRequest(),
-        rewardedAdLoadCallback: RewardedAdLoadCallback(
-          onAdLoaded: (ad) {
-            _rewardedAd = ad;
-            if (_debugMode) print('✅ Rewarded ad loaded successfully');
-          },
-          onAdFailedToLoad: (error) {
-            if (_debugMode) print('❌ Rewarded ad failed to load: $error');
-            _rewardedAd = null;
-          },
-        ),
-      );
-    } catch (e) {
-      if (_debugMode) print('❌ Rewarded ad load error: $e');
-      _rewardedAd = null;
-    }
-  }
-
-  static Future<void> showRewardedAd({required VoidCallback onReward}) async {
-    // FIXED: Use AdHelper and give reward to paid users automatically
-    if (!AdHelper.canShowRewardedAd()) {
-      if (_debugMode) print('🚫 Rewarded ad skipped - user has Remove Ads, giving reward automatically');
-      onReward();
-      return;
-    }
-    
-    if (_rewardedAd == null) {
-      if (_debugMode) print('⚠️ Rewarded ad not ready, trying to load');
-      await _loadRewardedAd();
-      throw Exception('Ad not ready. Please try again in a moment.');
-    }
-
-    if (_debugMode) print('🎁 Showing rewarded ad...');
-
-    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
-      onAdShowedFullScreenContent: (ad) {
-        if (_debugMode) print('✅ Rewarded ad showed');
-      },
-      onAdDismissedFullScreenContent: (ad) {
-        if (_debugMode) print('👋 Rewarded ad dismissed');
-        ad.dispose();
-        _rewardedAd = null;
-        // FIXED: Only reload if ads should still be shown
-        if (AdHelper.canShowRewardedAd()) {
-          _loadRewardedAd();
-        }
-      },
-      onAdFailedToShowFullScreenContent: (ad, error) {
-        if (_debugMode) print('❌ Rewarded ad failed to show: $error');
-        ad.dispose();
-        _rewardedAd = null;
-        if (AdHelper.canShowRewardedAd()) {
-          _loadRewardedAd();
-        }
-        throw Exception('Failed to show ad: $error');
-      },
-      onAdImpression: (ad) {
-        if (_debugMode) print('👁️ Rewarded ad impression recorded');
-      },
-    );
-
-    try {
-      await _rewardedAd!.show(
-        onUserEarnedReward: (ad, reward) {
-          if (_debugMode) print('🎉 User earned reward: ${reward.amount} ${reward.type}');
-          onReward();
-        },
-      );
-    } catch (e) {
-      if (_debugMode) print('❌ Rewarded ad show error: $e');
-      throw Exception('Failed to show ad: $e');
-    }
-  }
-
   /// Debug method to check AdMob configuration
   static void debugAdConfiguration() {
-    print('=== 🔍 AdMob Debug Information ===');
+    print('=== 🔍 Chess Freak AdMob Debug ===');
     print('Platform: ${Platform.isAndroid ? "Android" : "iOS"}');
     print('Is Initialized: $_isInitialized');
     print('Debug Mode: $_debugMode');
@@ -325,7 +225,6 @@ class AdsService {
     if (Platform.isAndroid) {
       print('ANDROID_BANNER_AD_UNIT_ID: ${dotenv.env['ANDROID_BANNER_AD_UNIT_ID'] ?? 'NOT SET'}');
       print('ANDROID_INTERSTITIAL_AD_UNIT_ID: ${dotenv.env['ANDROID_INTERSTITIAL_AD_UNIT_ID'] ?? 'NOT SET'}');
-      print('ANDROID_REWARDED_AD_UNIT_ID: ${dotenv.env['ANDROID_REWARDED_AD_UNIT_ID'] ?? 'NOT SET'}');
     }
     
     // Check actual ad unit IDs being used
@@ -333,29 +232,25 @@ class AdsService {
     try {
       print('Banner: $_bannerAdUnitId');
       print('Interstitial: $_interstitialAdUnitId');
-      print('Rewarded: $_rewardedAdUnitId');
     } catch (e) {
       print('Error getting ad unit IDs: $e');
     }
     
     // Check ad states
-    print('\n📊 Ad States:');
+    print('\n📊 Chess Ad States:');
     print('Banner Ad Loaded: $isBannerLoaded');
     print('Interstitial Ready: $isInterstitialReady');
-    print('Rewarded Ready: $isRewardedReady');
     
     // FIXED: Use AdHelper for debugging
     print('Should Show Ads: ${AdHelper.shouldShowAds()}');
     print('Can Show Banner: ${AdHelper.canShowBannerAd()}');
     print('Can Show Interstitial: ${AdHelper.canShowInterstitialAd()}');
-    print('Can Show Rewarded: ${AdHelper.canShowRewardedAd()}');
     
-    print('================================\n');
+    print('==================================\n');
   }
 
   /// Check if ads are ready to show - FIXED: Also check if ads should be shown
   static bool get isInterstitialReady => _interstitialAd != null && AdHelper.canShowInterstitialAd();
-  static bool get isRewardedReady => _rewardedAd != null && AdHelper.canShowRewardedAd();
   static bool get isBannerLoaded => _bannerAd != null && AdHelper.canShowBannerAd();
 
   /// Get banner ad widget for displaying in UI
@@ -363,20 +258,17 @@ class AdsService {
 
   /// Force reload ads (useful after network connectivity issues)
   static Future<void> reloadAds() async {
-    if (_debugMode) print('🔄 Reloading all ads...');
+    if (_debugMode) print('🔄 Reloading chess ads...');
     
     // FIXED: Only reload if ads should be shown
     if (AdHelper.canShowInterstitialAd()) {
       await _loadInterstitialAd();
     }
-    if (AdHelper.canShowRewardedAd()) {
-      await _loadRewardedAd();
-    }
   }
 
   /// Dispose all ads
   static void dispose() {
-    if (_debugMode) print('🗑️ Disposing all ads...');
+    if (_debugMode) print('🗑️ Disposing all chess ads...');
     _bannerAd?.dispose();
     _bannerAd = null;
     _interstitialAd?.dispose();

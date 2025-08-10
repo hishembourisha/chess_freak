@@ -1,0 +1,54 @@
+name: chess_freak
+description: A Flutter Chess app 3 AI difficulty levels
+publish_to: 'none'
+
+version: 1.0.1+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_mobile_ads: ^6.0.0 
+  in_app_purchase: ^3.1.13 
+  shared_preferences: ^2.2.2 
+  flutter_dotenv: ^5.1.0 
+  audioplayers: ^5.1.0   
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0 
+  flutter_launcher_icons: ^0.14.4
+  url_launcher: ^6.2.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/sounds/
+    - assets/icon/
+    - assets/pieces/
+    - assets/pieces/white_pawn.png
+    - assets/pieces/white_rook.png
+    - assets/pieces/white_knight.png
+    - assets/pieces/white_bishop.png
+    - assets/pieces/white_queen.png
+    - assets/pieces/white_king.png
+    - assets/pieces/black_pawn.png
+    - assets/pieces/black_rook.png
+    - assets/pieces/black_knight.png
+    - assets/pieces/black_bishop.png
+    - assets/pieces/black_queen.png
+    - assets/pieces/black_king.png
+
+# Icon configuration
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icon/icon.png"

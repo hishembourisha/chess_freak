@@ -1,7 +1,7 @@
 // lib/widgets/completion_dialog.dart - Enhanced with Remove Ads awareness
 import 'package:flutter/material.dart';
 import '../services/vibration_service.dart';
-import '../services/ad_helper.dart'; // ADDED: For Remove Ads logic
+import '../helpers/ad_helper.dart'; // ADDED: For Remove Ads logic
 
 class CompletionDialog extends StatelessWidget {
   final String difficulty;
