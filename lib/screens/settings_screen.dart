@@ -35,7 +35,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
-
 Future<void> _loadSettings() async {
   try {
     await SoundService.initialize();
@@ -282,7 +281,7 @@ Future<void> _loadSettings() async {
             Text('All advertisements have been permanently removed from the app.'),
             SizedBox(height: 12),
             Text(
-              'Enjoy your ad-free Sudoku experience!',
+              'Enjoy your ad-free Chess experience!',
               style: TextStyle(color: Colors.green),
             ),
           ],
@@ -516,10 +515,10 @@ Future<void> _loadSettings() async {
                         onTap: () {
                           showAboutDialog(
                             context: context,
-                            applicationName: 'Sudoku Freak',
+                            applicationName: 'Chess Freak',
                             applicationVersion: '1.0.0',
                             children: [
-                              const Text('Sudoku Freak is your ultimate destination for classic Sudoku puzzles. Enjoy a seamless and challenging experience!'),
+                              const Text('Chess Freak is your ultimate destination for Chess games. Enjoy a seamless and challenging experience!'),
                             ],
                           );
                         },

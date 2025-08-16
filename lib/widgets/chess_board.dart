@@ -1,4 +1,4 @@
-// File: lib/widgets/chess_board.dart
+// File: lib/widgets/chess_board.dart - Smooth, no vibration version
 
 import 'package:flutter/material.dart';
 import '../services/chess_engine.dart';
@@ -9,11 +9,11 @@ class ChessBoardWidget extends StatefulWidget {
   final bool isPlayerWhite;
 
   const ChessBoardWidget({
-    Key? key,
+    super.key,
     required this.engine,
     this.onMoveMade,
     this.isPlayerWhite = true,
-  }) : super(key: key);
+  });
 
   @override
   State<ChessBoardWidget> createState() => _ChessBoardWidgetState();
@@ -26,21 +26,39 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
   List<List<int>> validMoves = [];
   bool isThinking = false;
   
-  late AnimationController _moveAnimationController;
-  late AnimationController _captureAnimationController;
+  // Game end visualization - STABLE state management
+  bool isShowingGameEndVisualization = false;
+  Set<String> highlightedSquares = {}; // Store "row,col" strings
+  
+  // OPTIMIZED: Fewer animation controllers to reduce conflicts
+  late AnimationController _pieceAnimationController; // Combined for moves and captures
+  late AnimationController _gameEndAnimationController; // For game end highlighting
+  
+  // STABILITY: Cache the last known board state to prevent unnecessary rebuilds
+  List<List<ChessPiece?>>? _lastBoardState;
+  GameState? _lastGameState;
   
   @override
   void initState() {
     super.initState();
-    _moveAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _captureAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+    
+    // OPTIMIZED: Single animation controller for piece movements
+    _pieceAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 250), // Slightly faster
       vsync: this,
     );
     
+    // Game end visualization controller
+    _gameEndAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    
+    // Initialize cache
+    _lastBoardState = _copyBoard(widget.engine.board);
+    _lastGameState = widget.engine.gameState;
+    
+    // DELAYED: Check for AI move after widget is fully built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForAIMove();
     });
@@ -48,142 +66,269 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
 
   @override
   void dispose() {
-    _moveAnimationController.dispose();
-    _captureAnimationController.dispose();
+    _pieceAnimationController.dispose();
+    _gameEndAnimationController.dispose();
     super.dispose();
   }
 
+  // HELPER: Deep copy board state for comparison
+  List<List<ChessPiece?>> _copyBoard(List<List<ChessPiece?>> board) {
+    return board.map((row) => 
+      row.map((piece) => piece?.copy()).toList()
+    ).toList();
+  }
+
+  // STABILITY: Only update if board actually changed
+  @override
+  void didUpdateWidget(ChessBoardWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Check if board state actually changed to avoid unnecessary rebuilds
+    final currentBoard = widget.engine.board;
+    final currentGameState = widget.engine.gameState;
+    
+    bool boardChanged = false;
+    if (_lastBoardState == null) {
+      boardChanged = true;
+    } else {
+      // Compare board states
+      for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+          final lastPiece = _lastBoardState![row][col];
+          final currentPiece = currentBoard[row][col];
+          
+          if ((lastPiece == null) != (currentPiece == null)) {
+            boardChanged = true;
+            break;
+          }
+          
+          if (lastPiece != null && currentPiece != null) {
+            if (lastPiece.type != currentPiece.type || 
+                lastPiece.color != currentPiece.color ||
+                lastPiece.hasMoved != currentPiece.hasMoved) {
+              boardChanged = true;
+              break;
+            }
+          }
+        }
+        if (boardChanged) break;
+      }
+    }
+    
+    // Only trigger updates if something actually changed
+    if (boardChanged || _lastGameState != currentGameState) {
+      _lastBoardState = _copyBoard(currentBoard);
+      _lastGameState = currentGameState;
+      
+      // SMOOTH: Use a microtask to avoid immediate rebuilds during move processing
+      Future.microtask(() {
+        if (mounted) {
+          _checkForAIMove();
+        }
+      });
+    }
+  }
+
+  // Method to find king position
+  Map<String, int>? _findKingPosition(PieceColor color) {
+    for (int row = 0; row < 8; row++) {
+      for (int col = 0; col < 8; col++) {
+        final piece = widget.engine.board[row][col];
+        if (piece?.type == PieceType.king && piece?.color == color) {
+          return {'row': row, 'col': col};
+        }
+      }
+    }
+    return null;
+  }
+
+  // Method to get squares adjacent to king
+  Set<String> _getAdjacentSquares(int kingRow, int kingCol) {
+    final adjacentSquares = <String>{};
+    
+    // All 8 directions around the king
+    final directions = [
+      [-1, -1], [-1, 0], [-1, 1],  // Top row
+      [0, -1],           [0, 1],   // Middle row (excluding king's position)
+      [1, -1],  [1, 0],  [1, 1],   // Bottom row
+    ];
+    
+    for (final direction in directions) {
+      final newRow = kingRow + direction[0];
+      final newCol = kingCol + direction[1];
+      
+      // Check if the square is within bounds
+      if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+        adjacentSquares.add('$newRow,$newCol');
+      }
+    }
+    
+    return adjacentSquares;
+  }
+
+  // SMOOTH: Start game end visualization without causing layout shifts
+  Future<void> _startGameEndVisualization() async {
+    if (widget.engine.gameState != GameState.checkmate && 
+        widget.engine.gameState != GameState.stalemate) {
+      return;
+    }
+
+    print('🎨 === GAME END VISUALIZATION START ===');
+    print('Game state: ${widget.engine.gameState}');
+    
+    // Find the current player's king (the one who is in checkmate/stalemate)
+    final kingPosition = _findKingPosition(widget.engine.currentPlayer);
+    
+    if (kingPosition == null) {
+      print('❌ Could not find king position for visualization');
+      return;
+    }
+    
+    final kingRow = kingPosition['row']!;
+    final kingCol = kingPosition['col']!;
+    
+    print('👑 King found at: row $kingRow, col $kingCol');
+    
+    // Get all squares adjacent to the king
+    final adjacentSquares = _getAdjacentSquares(kingRow, kingCol);
+    
+    print('🔍 Adjacent squares: $adjacentSquares');
+    
+    // SMOOTH: Update state only once and avoid layout thrashing
+    if (mounted) {
+      setState(() {
+        isShowingGameEndVisualization = true;
+        highlightedSquares = adjacentSquares;
+      });
+      
+      // Start the animation (pulsing effect)
+      _gameEndAnimationController.repeat(reverse: true);
+    }
+    
+    print('✅ Game end visualization started');
+    print('🎨 === GAME END VISUALIZATION END ===');
+    
+    // Wait 3 seconds before allowing the game over dialog to show
+    await Future.delayed(const Duration(seconds: 3));
+    
+    // SMOOTH: Clean stop without jarring state changes
+    if (mounted) {
+      _gameEndAnimationController.stop();
+      setState(() {
+        isShowingGameEndVisualization = false;
+        highlightedSquares.clear();
+      });
+    }
+  }
+
   void _checkForAIMove() {
-    if (widget.engine.gameState == GameState.playing &&
+    // STABILITY: Debounce AI move checks to prevent rapid firing
+    if (isThinking) return;
+    
+    if ((widget.engine.gameState == GameState.playing || widget.engine.gameState == GameState.check) &&
         ((widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.black) ||
-         (!widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.white))) {
+        (!widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.white))) {
       _makeAIMove();
     }
   }
 
-Future<void> _makeAIMove() async {
-  if (isThinking) return;
-  
-  setState(() {
-    isThinking = true;
-  });
+  Future<void> _makeAIMove() async {
+    if (isThinking) return;
+    
+    // SMOOTH: Single state update for thinking mode
+    if (mounted) {
+      setState(() {
+        isThinking = true;
+      });
+    }
 
-  // COMPREHENSIVE DEBUG LOGGING
-  print('🤖 === AI MOVE DEBUG START ===');
-  print('Game state: ${widget.engine.gameState}');
-  print('Current player: ${widget.engine.currentPlayer}');
-  print('Is game over: ${widget.engine.isGameOver}');
-  print('Is in check: ${widget.engine.isCheck}');
-  
-  // Check if AI has any valid moves at all
-  int totalValidMoves = 0;
-  List<String> sampleMoves = [];
-  
-  // Count valid moves by checking all squares
-  for (int fromRow = 0; fromRow < 8; fromRow++) {
-    for (int fromCol = 0; fromCol < 8; fromCol++) {
-      final piece = widget.engine.board[fromRow][fromCol];
-      if (piece?.color == widget.engine.currentPlayer) {
-        final moves = widget.engine.getValidMoves(fromRow, fromCol);
-        totalValidMoves += moves.length;
+    print('🤖 === AI MOVE DEBUG START ===');
+    print('Game state: ${widget.engine.gameState}');
+    print('Current player: ${widget.engine.currentPlayer}');
+    print('Is game over: ${widget.engine.isGameOver}');
+    print('Is in check: ${widget.engine.isCheck}');
+    
+    // AI thinking delay based on difficulty
+    await Future.delayed(Duration(
+      milliseconds: widget.engine.difficulty == Difficulty.beginner 
+          ? 400  // Slightly faster for better UX
+          : widget.engine.difficulty == Difficulty.intermediate 
+              ? 800 
+              : 1200
+    ));
+
+    final aiMove = widget.engine.getBestMove();
+    print('🎲 getBestMove() returned: $aiMove');
+    
+    if (aiMove != null) {
+      print('🔥 Attempting to make move: ${aiMove.fromRow},${aiMove.fromCol} -> ${aiMove.toRow},${aiMove.toCol}');
+      
+      final success = widget.engine.makeMove(
+        aiMove.fromRow,
+        aiMove.fromCol,
+        aiMove.toRow,
+        aiMove.toCol,
+      );
+      print('✅ Move execution result: $success');
+      
+      if (success) {
+        print('🎉 Move successful! New game state: ${widget.engine.gameState}');
         
-        // Add some sample moves for debugging
-        for (var move in moves) {
-          if (sampleMoves.length < 5) {
-            sampleMoves.add('$fromRow,$fromCol -> ${move[0]},${move[1]}');
+        // SMOOTH: Single animation trigger instead of multiple
+        _pieceAnimationController.forward().then((_) {
+          if (mounted) {
+            _pieceAnimationController.reset();
           }
+        });
+
+        // Check if game ended and start visualization
+        if (widget.engine.isGameOver) {
+          await _startGameEndVisualization();
+        }
+
+        // SMOOTH: Single callback with state update
+        if (mounted) {
+          setState(() {
+            isThinking = false;
+          });
+          widget.onMoveMade?.call(aiMove);
+        }
+      } else {
+        print('💥 Move failed even though it was returned by getBestMove()!');
+        if (mounted) {
+          setState(() {
+            isThinking = false;
+          });
         }
       }
-    }
-  }
-  
-  print('🎯 Total valid moves found: $totalValidMoves');
-  
-  if (totalValidMoves == 0) {
-    print('❌ NO VALID MOVES FOUND - This should be checkmate or stalemate!');
-    print('Current game state should be updated but is: ${widget.engine.gameState}');
-  } else {
-    print('✅ Valid moves available:');
-    for (int i = 0; i < sampleMoves.length; i++) {
-      print('   Move ${i+1}: ${sampleMoves[i]}');
-    }
-  }
-
-  await Future.delayed(Duration(
-    milliseconds: widget.engine.difficulty == Difficulty.beginner 
-        ? 500 
-        : widget.engine.difficulty == Difficulty.intermediate 
-            ? 1000 
-            : 1500
-  ));
-
-  final aiMove = widget.engine.getBestMove();
-  print('🎲 getBestMove() returned: $aiMove');
-  
-  if (aiMove != null) {
-    print('🔥 Attempting to make move: ${aiMove.fromRow},${aiMove.fromCol} -> ${aiMove.toRow},${aiMove.toCol}');
-    
-    // Check if this move is actually valid
-    final isValid = widget.engine.isValidMove(aiMove.fromRow, aiMove.fromCol, aiMove.toRow, aiMove.toCol);
-    print('🔍 Move validity check: $isValid');
-    
-    final success = widget.engine.makeMove(
-      aiMove.fromRow,
-      aiMove.fromCol,
-      aiMove.toRow,
-      aiMove.toCol,
-    );
-    print('✅ Move execution result: $success');
-    
-    if (success) {
-      print('🎉 Move successful! New game state: ${widget.engine.gameState}');
+    } else {
+      print('❌ getBestMove() returned null!');
       
-      _moveAnimationController.forward().then((_) {
-        _moveAnimationController.reset();
-      });
-
-      if (aiMove.capturedPiece != null) {
-        _captureAnimationController.forward().then((_) {
-          _captureAnimationController.reset();
+      if (widget.engine.isGameOver) {
+        print('🏁 Game is actually over! Should trigger game over dialog...');
+        await _startGameEndVisualization();
+      }
+      
+      if (mounted) {
+        setState(() {
+          isThinking = false;
         });
       }
+    }
 
-      widget.onMoveMade?.call(aiMove);
-    } else {
-      print('💥 Move failed even though it was returned by getBestMove()!');
-    }
-  } else {
-    print('❌ getBestMove() returned null!');
-    print('🔍 Checking if this is actually game over...');
-    
-    // We can't call _updateGameState() directly since it's private
-    // But we can check the current state
-    print('🔄 Current game state: ${widget.engine.gameState}');
-    print('🔄 Is game over: ${widget.engine.isGameOver}');
-    
-    if (widget.engine.isGameOver) {
-      print('🏁 Game is actually over! Should trigger game over dialog...');
-      // The game should end here, but let's see if the UI handles it
-    } else {
-      print('🤔 Game is not marked as over, but AI has no moves. This is the bug!');
-    }
+    print('🤖 === AI MOVE DEBUG END ===');
   }
 
-  print('🤖 === AI MOVE DEBUG END ===');
-
-  setState(() {
-    isThinking = false;
-  });
-}
-
   void _onSquareTapped(int row, int col) {
-    if (isThinking || widget.engine.isGameOver) return;
+    // STABILITY: Prevent interactions during animations or game over
+    if (isThinking || widget.engine.isGameOver || isShowingGameEndVisualization) return;
 
     final isPlayerTurn = (widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.white) ||
                         (!widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.black);
     
     if (!isPlayerTurn) return;
 
+    // SMOOTH: Batch state updates to reduce rebuilds
     setState(() {
       if (selectedRow == null || selectedCol == null) {
         final piece = widget.engine.board[row][col];
@@ -194,31 +339,40 @@ Future<void> _makeAIMove() async {
         }
       } else {
         if (selectedRow == row && selectedCol == col) {
+          // Deselect
           selectedRow = null;
           selectedCol = null;
           validMoves = [];
         } else {
+          // Attempt move
           final success = widget.engine.makeMove(selectedRow!, selectedCol!, row, col);
           
           if (success) {
-            _moveAnimationController.forward().then((_) {
-              _moveAnimationController.reset();
+            // SMOOTH: Single animation trigger
+            _pieceAnimationController.forward().then((_) {
+              if (mounted) {
+                _pieceAnimationController.reset();
+              }
             });
 
             final move = widget.engine.moveHistory.last;
-            if (move.capturedPiece != null) {
-              _captureAnimationController.forward().then((_) {
-                _captureAnimationController.reset();
+
+            // Check if game ended after player move and start visualization
+            if (widget.engine.isGameOver) {
+              _startGameEndVisualization().then((_) {
+                widget.onMoveMade?.call(move);
+              });
+            } else {
+              widget.onMoveMade?.call(move);
+              
+              // DELAYED: Check for AI move after UI settles
+              Future.delayed(const Duration(milliseconds: 50), () {
+                _checkForAIMove();
               });
             }
-
-            widget.onMoveMade?.call(move);
-            
-            Future.delayed(const Duration(milliseconds: 100), () {
-              _checkForAIMove();
-            });
           }
           
+          // Clear selection
           selectedRow = null;
           selectedCol = null;
           validMoves = [];
@@ -284,6 +438,10 @@ Future<void> _makeAIMove() async {
 
   @override
   Widget build(BuildContext context) {
+    // STABILITY: Memoize expensive calculations
+    final statusColor = _getStatusColor();
+    final statusText = _getStatusText();
+    
     return Container(
       padding: const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
@@ -300,27 +458,32 @@ Future<void> _makeAIMove() async {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // STABILITY: Fixed size status container to prevent layout shifts
           Container(
+            height: 40, // Fixed height prevents jumping
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: BoxDecoration(
-              color: _getStatusColor(),
+              color: statusColor,
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(
-              _getStatusText(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+            child: Center(
+              child: Text(
+                statusText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
           const SizedBox(height: 8),
           
+          // STABILITY: Fixed aspect ratio prevents size changes
           AspectRatio(
             aspectRatio: 1.0,
             child: Stack(
               children: [
-                // Main chess board
+                // Main chess board with fixed positioning
                 Positioned(
                   left: 20,
                   top: 20,
@@ -351,76 +514,111 @@ Future<void> _makeAIMove() async {
                   ),
                 ),
                 
-                // Row numbers (left side)
-                for (int i = 0; i < 8; i++)
-                  Positioned(
-                    left: 2,
-                    top: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      alignment: Alignment.center,
-                      child: Text(
-                        '${widget.isPlayerWhite ? 8 - i : i + 1}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.brown[800],
-                        ),
+                // FIXED: Board coordinates (prevent layout shifts)
+                ...List.generate(8, (i) => Positioned(
+                  left: 2,
+                  top: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${widget.isPlayerWhite ? 8 - i : i + 1}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.brown[800],
                       ),
                     ),
                   ),
+                )),
                 
-                // Column letters (bottom)
-                for (int i = 0; i < 8; i++)
-                  Positioned(
-                    left: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
-                    bottom: 2,
-                    child: Container(
-                      width: 16,
-                      height: 16,
-                      alignment: Alignment.center,
-                      child: Text(
-                        String.fromCharCode(97 + (widget.isPlayerWhite ? i : 7 - i)),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.brown[800],
-                        ),
+                ...List.generate(8, (i) => Positioned(
+                  left: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
+                  bottom: 2,
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    alignment: Alignment.center,
+                    child: Text(
+                      String.fromCharCode(97 + (widget.isPlayerWhite ? i : 7 - i)),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.brown[800],
                       ),
                     ),
                   ),
+                )),
               ],
             ),
           ),
           
           const SizedBox(height: 8),
           
-          if (isThinking)
-            Container(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+          // STABILITY: Fixed height status area to prevent layout jumping
+          Container(
+            height: 50, // Fixed height
+            child: Column(
+              children: [
+                if (isThinking)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'AI is thinking...',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isShowingGameEndVisualization)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          widget.engine.gameState == GameState.checkmate 
+                              ? Icons.warning 
+                              : Icons.info,
+                          color: widget.engine.gameState == GameState.checkmate 
+                              ? Colors.red 
+                              : Colors.orange,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          widget.engine.gameState == GameState.checkmate 
+                              ? 'Checkmate - No escape!' 
+                              : 'Stalemate - No legal moves!',
+                          style: TextStyle(
+                            color: widget.engine.gameState == GameState.checkmate 
+                                ? Colors.red 
+                                : Colors.orange,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'AI is thinking...',
-                    style: TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -435,30 +633,50 @@ Future<void> _makeAIMove() async {
         ((widget.engine.lastMove!.fromRow == row && widget.engine.lastMove!.fromCol == col) ||
          (widget.engine.lastMove!.toRow == row && widget.engine.lastMove!.toCol == col));
 
+    // Check if this square should be highlighted for game end visualization
+    final squareKey = '$row,$col';
+    final isGameEndHighlighted = isShowingGameEndVisualization && highlightedSquares.contains(squareKey);
+
+    // SMOOTH: Calculate color once to prevent rapid color changes
     Color squareColor;
     if (isSelected) {
       squareColor = Colors.blue[300]!;
+    } else if (isGameEndHighlighted) {
+      final baseColor = widget.engine.gameState == GameState.checkmate 
+          ? Colors.red 
+          : Colors.orange;
+      
+      // SMOOTH: More subtle pulsing effect
+      final animationValue = _gameEndAnimationController.value;
+      final intensity = 0.4 + (animationValue * 0.3); // Gentler pulse range
+      squareColor = baseColor.withOpacity(intensity);
     } else if (isLastMoveSquare) {
-      squareColor = Colors.yellow[300]!;
+      squareColor = const Color.fromARGB(140, 174, 175, 177)!;
     } else if (isLightSquare) {
-      squareColor = Colors.brown[50]!;  // Light brown squares
+      squareColor = Colors.brown[50]!;
     } else {
-      squareColor = Colors.brown[300]!;  // Dark brown squares
+      squareColor = Colors.brown[300]!;
     }
 
     return GestureDetector(
       onTap: () => _onSquareTapped(row, col),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container( // REMOVED: AnimatedContainer to prevent constant rebuilds
         decoration: BoxDecoration(
           color: squareColor,
           border: isSelected 
               ? Border.all(color: Colors.blue[600]!, width: 3)
-              : null,
+              : isGameEndHighlighted
+                  ? Border.all(
+                      color: widget.engine.gameState == GameState.checkmate 
+                          ? Colors.red[800]! 
+                          : Colors.orange[800]!, 
+                      width: 2
+                    )
+                  : null,
         ),
         child: Stack(
           children: [
-            if (isValidMove && !isSelected)
+            if (isValidMove && !isSelected && !isGameEndHighlighted)
               Center(
                 child: Container(
                   width: piece != null ? 40 : 20,
@@ -479,44 +697,32 @@ Future<void> _makeAIMove() async {
             if (piece != null)
               Center(
                 child: AnimatedBuilder(
-                  animation: _moveAnimationController,
+                  animation: _pieceAnimationController,
                   builder: (context, child) {
+                    // SMOOTH: Gentler animation scaling
+                    final scale = 1.0 + (_pieceAnimationController.value * 0.05);
                     return Transform.scale(
-                      scale: 1.0 + (_moveAnimationController.value * 0.1),
-                      child: AnimatedBuilder(
-                        animation: _captureAnimationController,
-                        builder: (context, child) {
-                          return Transform.rotate(
-                            angle: _captureAnimationController.value * 0.1,
-                            child: Image.asset(
-                              _getPieceAssetPath(piece)!,
-                              width: 56,
-                              height: 56,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                // Print debug info to help troubleshoot
-                                print('Failed to load asset: ${_getPieceAssetPath(piece)}');
-                                print('Error: $error');
-                                
-                                // Fallback to Unicode symbols
-                                return Text(
-                                  _getPieceUnicode(piece),
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: _captureAnimationController.value > 0
-                                        ? Colors.red.withOpacity(1 - _captureAnimationController.value)
-                                        : Colors.black87,
-                                    shadows: [
-                                      Shadow(
-                                        color: Colors.white.withOpacity(0.8),
-                                        blurRadius: 2,
-                                        offset: const Offset(1, 1),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                      scale: scale,
+                      child: Image.asset(
+                        _getPieceAssetPath(piece)!,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback to Unicode symbols
+                          return Text(
+                            _getPieceUnicode(piece),
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.white.withOpacity(0.8),
+                                  blurRadius: 2,
+                                  offset: const Offset(1, 1),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -525,7 +731,6 @@ Future<void> _makeAIMove() async {
                   },
                 ),
               ),
-            
           ],
         ),
       ),
@@ -533,6 +738,10 @@ Future<void> _makeAIMove() async {
   }
 
   Color _getStatusColor() {
+    if (isShowingGameEndVisualization) {
+      return widget.engine.gameState == GameState.checkmate ? Colors.red : Colors.orange;
+    }
+    
     switch (widget.engine.gameState) {
       case GameState.check:
         return Colors.orange;
@@ -548,6 +757,12 @@ Future<void> _makeAIMove() async {
   }
 
   String _getStatusText() {
+    if (isShowingGameEndVisualization) {
+      return widget.engine.gameState == GameState.checkmate 
+          ? 'Checkmate!' 
+          : 'Stalemate!';
+    }
+    
     if (isThinking) return 'AI Thinking...';
     
     switch (widget.engine.gameState) {

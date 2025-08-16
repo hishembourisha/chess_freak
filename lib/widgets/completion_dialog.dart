@@ -52,7 +52,7 @@ class CompletionDialog extends StatelessWidget {
           ),
         ],
       ),
-      content: Container(
+      content: SizedBox(
         width: isLargeTablet ? 400 : (isTablet ? 350 : 300),
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -6,100 +6,61 @@ class CapturedPiecesWidget extends StatelessWidget {
   final bool showWhiteCaptured;
 
   const CapturedPiecesWidget({
-    Key? key,
+    super.key,
     required this.engine,
     required this.showWhiteCaptured,
-  }) : super(key: key);
+  });
 
-@override
-Widget build(BuildContext context) {
-  final capturedPieces = showWhiteCaptured 
-      ? engine.whiteCaptured 
-      : engine.blackCaptured;
-  
-  // 🐛 DEBUG: Add this section
-  print('🔍 === CAPTURED PIECES DEBUG ===');
-  print('showWhiteCaptured: $showWhiteCaptured');
-  print('engine.whiteCaptured.length: ${engine.whiteCaptured.length}');
-  print('engine.blackCaptured.length: ${engine.blackCaptured.length}');
-  print('capturedPieces.length: ${capturedPieces.length}');
-  
-  print('White captured pieces:');
-  for (int i = 0; i < engine.whiteCaptured.length; i++) {
-    final piece = engine.whiteCaptured[i];
-    print('  $i: ${piece.color} ${piece.type}');
-  }
-  
-  print('Black captured pieces:');
-  for (int i = 0; i < engine.blackCaptured.length; i++) {
-    final piece = engine.blackCaptured[i];
-    print('  $i: ${piece.color} ${piece.type}');
-  }
-  print('🔍 === DEBUG END ===');
-  // 🐛 DEBUG: End of debug section
-  
-  final materialAdvantage = _calculateMaterialAdvantage();
-  
-  return Container(
-    // ... keep all your existing container code exactly the same
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(
-        color: Colors.grey[300]!,
-        width: 1,
+  @override
+  Widget build(BuildContext context) {
+    final capturedPieces = showWhiteCaptured
+        ? engine.whiteCaptured
+        : engine.blackCaptured;
+    
+    // The debug print statements in the build method are for the console only and don't affect the UI.
+    // They can be removed, but are not causing the issue you're asking about.
+    
+    final materialAdvantage = _calculateMaterialAdvantage();
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.grey[300]!,
+          width: 1,
+        ),
       ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.person,
-              color: Colors.black87,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              showWhiteCaptured ? 'White Captured' : 'Black Captured',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.person,
                 color: Colors.black87,
-                fontSize: 14,
+                size: 20,
               ),
-            ),
-            const Spacer(),
-            
-            // 🐛 DEBUG: Add this debug counter
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.blue,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                'Count: ${capturedPieces.length}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
+              const SizedBox(width: 8),
+              Text(
+                showWhiteCaptured ? 'White Captured' : 'Black Captured',
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                  fontSize: 14,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // 🐛 DEBUG: End debug counter
-            
-            if (materialAdvantage != 0)
+              const Spacer(),
+              
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: _getMaterialAdvantageColor(materialAdvantage),
+                  color: Colors.blue,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  materialAdvantage > 0 ? '+${materialAdvantage}' : '$materialAdvantage',
+                  'Count: ${capturedPieces.length}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,
@@ -107,44 +68,61 @@ Widget build(BuildContext context) {
                   ),
                 ),
               ),
-          ],
-        ),
-        
-        const SizedBox(height: 8),
-        
-        if (capturedPieces.isEmpty)
-          Container(
-            height: 40,
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'No pieces captured',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
+              const SizedBox(width: 8),
+              
+              if (materialAdvantage != 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _getMaterialAdvantageColor(materialAdvantage),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    materialAdvantage > 0 ? '+$materialAdvantage' : '$materialAdvantage',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                // 🐛 DEBUG: Add this debug line
-                Text(
-                  'Debug: W:${engine.whiteCaptured.length} B:${engine.blackCaptured.length}',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 10,
+            ],
+          ),
+          
+          const SizedBox(height: 8),
+          
+          if (capturedPieces.isEmpty)
+            Container(
+              height: 40,
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'No pieces captured',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                ),
-                // 🐛 DEBUG: End debug line
-              ],
-            ),
-          )
-        else
-          _buildCapturedPiecesGrid(capturedPieces),
-      ],
-    ),
-  );
-}
+                  // REMOVED: This is the debug Text widget you need to delete.
+                  // Text(
+                  //   'Debug: W:${engine.whiteCaptured.length} B:${engine.blackCaptured.length}',
+                  //   style: TextStyle(
+                  //     color: Colors.red,
+                  //     fontSize: 10,
+                  //   ),
+                  // ),
+                ],
+              ),
+            )
+          else
+            _buildCapturedPiecesGrid(capturedPieces),
+        ],
+      ),
+    );
+  }
 
   Widget _buildCapturedPiecesGrid(List<ChessPiece> pieces) {
     final groupedPieces = <PieceType, List<ChessPiece>>{};
@@ -191,7 +169,6 @@ Widget build(BuildContext context) {
           height: 24,
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
-            // Fallback to Unicode symbols if PNG loading fails
             return Text(
               _getPieceUnicode(piece),
               style: const TextStyle(
@@ -205,7 +182,6 @@ Widget build(BuildContext context) {
     );
   }
 
-  // Helper function to get piece asset path (same as chess board)
   String? _getPieceAssetPath(ChessPiece piece) {
     final colorName = piece.color == PieceColor.white ? 'white' : 'black';
     
@@ -225,7 +201,6 @@ Widget build(BuildContext context) {
     }
   }
 
-  // Fallback Unicode symbols if images don't load
   String _getPieceUnicode(ChessPiece piece) {
     if (piece.color == PieceColor.white) {
       switch (piece.type) {
@@ -264,7 +239,6 @@ Widget build(BuildContext context) {
     int whiteCapturedValue = 0;
     int blackCapturedValue = 0;
 
-    // Calculate total value of captured pieces
     for (final piece in engine.whiteCaptured) {
       whiteCapturedValue += piece.value;
     }
@@ -272,17 +246,14 @@ Widget build(BuildContext context) {
       blackCapturedValue += piece.value;
     }
 
-    // Only show advantage if this section actually has pieces AND there's a difference
     final capturedPieces = showWhiteCaptured ? engine.whiteCaptured : engine.blackCaptured;
     if (capturedPieces.isEmpty) {
-      return 0; // Don't show any advantage if no pieces captured
+      return 0;
     }
 
     if (showWhiteCaptured) {
-      // Showing white captured pieces - show how much MORE white was captured
       return whiteCapturedValue - blackCapturedValue;
     } else {
-      // Showing black captured pieces - show how much MORE black was captured  
       return blackCapturedValue - whiteCapturedValue;
     }
   }

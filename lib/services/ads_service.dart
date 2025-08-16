@@ -4,13 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../helpers/ad_helper.dart'; // CORRECT: AdHelper is in helpers folder
 import 'dart:io';
+import 'dart:async';
 
 class AdsService {
-  static BannerAd? _bannerAd;
+  // Removed: Static _bannerAd field is no longer needed here.
   static InterstitialAd? _interstitialAd;
   static RewardedAd? _rewardedAd;
   static bool _isInitialized = false;
-  static bool _debugMode = kDebugMode;
+  static final bool _debugMode = kDebugMode;
 
   // Load Ad Unit IDs from environment variables with better fallbacks
   static String get _bannerAdUnitId {
@@ -41,8 +42,62 @@ class AdsService {
     throw UnsupportedError('Unsupported platform');
   }
 
-  // REMOVED: Rewarded ad methods since chess doesn't use hints/rewards
-
+  // ADDED: New method to create a banner ad instance for the widget
+  static Future<BannerAd?> createNewBannerAd() async {
+    if (!AdHelper.canShowBannerAd()) {
+      if (_debugMode) print('🚫 Banner ad creation skipped - user has Remove Ads');
+      return null;
+    }
+    
+    if (!_isInitialized) {
+      if (_debugMode) print('⚠️ AdMob not initialized, initializing now...');
+      await initialize();
+    }
+    
+    if (_debugMode) print('📱 Creating a new banner ad instance...');
+    
+    final Completer<BannerAd?> completer = Completer();
+    
+    final ad = BannerAd(
+      adUnitId: _bannerAdUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          if (_debugMode) print('✅ Chess banner ad loaded successfully');
+          completer.complete(ad as BannerAd);
+        },
+        onAdFailedToLoad: (ad, error) {
+          if (_debugMode) print('❌ Chess banner ad failed to load: $error');
+          ad.dispose();
+          completer.complete(null);
+        },
+        onAdOpened: (ad) {
+          if (_debugMode) print('👆 Chess banner ad opened');
+        },
+        onAdClosed: (ad) {
+          if (_debugMode) print('👋 Chess banner ad closed');
+        },
+        onAdClicked: (ad) {
+          if (_debugMode) print('🖱️ Chess banner ad clicked');
+        },
+      ),
+    );
+    
+    try {
+      await ad.load();
+    } catch (e) {
+      if (_debugMode) print('❌ Banner ad load error: $e');
+      ad.dispose();
+      return null;
+    }
+    
+    return completer.future;
+  }
+  
+  // REMOVED: showBannerAd() method is no longer needed
+  // ... (showBannerAd method was here) ...
+  
   static Future<void> initialize() async {
     if (_isInitialized) {
       if (_debugMode) print('🔄 AdMob already initialized');
@@ -80,57 +135,6 @@ class AdsService {
     } catch (e) {
       if (_debugMode) print('❌ AdMob initialization failed: $e');
       rethrow;
-    }
-  }
-
-  static Future<void> showBannerAd() async {
-    // FIXED: Use AdHelper instead of manual check
-    if (!AdHelper.canShowBannerAd()) {
-      if (_debugMode) print('🚫 Banner ad skipped - user has Remove Ads');
-      return;
-    }
-    
-    if (!_isInitialized) {
-      if (_debugMode) print('⚠️ AdMob not initialized, initializing now...');
-      await initialize();
-    }
-    
-    // Dispose existing banner
-    _bannerAd?.dispose();
-    
-    if (_debugMode) print('📱 Loading banner ad for chess...');
-    
-    _bannerAd = BannerAd(
-      adUnitId: _bannerAdUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (_debugMode) print('✅ Chess banner ad loaded successfully');
-        },
-        onAdFailedToLoad: (ad, error) {
-          if (_debugMode) print('❌ Chess banner ad failed to load: $error');
-          ad.dispose();
-          _bannerAd = null;
-        },
-        onAdOpened: (ad) {
-          if (_debugMode) print('👆 Chess banner ad opened');
-        },
-        onAdClosed: (ad) {
-          if (_debugMode) print('👋 Chess banner ad closed');
-        },
-        onAdClicked: (ad) {
-          if (_debugMode) print('🖱️ Chess banner ad clicked');
-        },
-      ),
-    );
-    
-    try {
-      await _bannerAd!.load();
-    } catch (e) {
-      if (_debugMode) print('❌ Banner ad load error: $e');
-      _bannerAd?.dispose();
-      _bannerAd = null;
     }
   }
 
@@ -238,7 +242,7 @@ class AdsService {
     
     // Check ad states
     print('\n📊 Chess Ad States:');
-    print('Banner Ad Loaded: $isBannerLoaded');
+    // Removed: Banner ad loaded state check is no longer needed in service
     print('Interstitial Ready: $isInterstitialReady');
     
     // FIXED: Use AdHelper for debugging
@@ -251,10 +255,11 @@ class AdsService {
 
   /// Check if ads are ready to show - FIXED: Also check if ads should be shown
   static bool get isInterstitialReady => _interstitialAd != null && AdHelper.canShowInterstitialAd();
-  static bool get isBannerLoaded => _bannerAd != null && AdHelper.canShowBannerAd();
+  // Removed: isBannerLoaded getter
+  // static bool get isBannerLoaded => _bannerAd != null && AdHelper.canShowBannerAd();
 
-  /// Get banner ad widget for displaying in UI
-  static BannerAd? get bannerAd => AdHelper.canShowBannerAd() ? _bannerAd : null;
+  // Removed: Get banner ad widget for displaying in UI
+  // static BannerAd? get bannerAd => AdHelper.canShowBannerAd() ? _bannerAd : null;
 
   /// Force reload ads (useful after network connectivity issues)
   static Future<void> reloadAds() async {
@@ -269,8 +274,7 @@ class AdsService {
   /// Dispose all ads
   static void dispose() {
     if (_debugMode) print('🗑️ Disposing all chess ads...');
-    _bannerAd?.dispose();
-    _bannerAd = null;
+    // Removed: Banner ad dispose logic is now handled by the widget
     _interstitialAd?.dispose();
     _interstitialAd = null;
     _rewardedAd?.dispose();

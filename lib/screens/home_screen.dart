@@ -1,8 +1,7 @@
 // File: lib/screens/home_screen.dart - Updated with Sudoku-inspired navigation
 
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
-import '../screens/chess_game_screen.dart';
+import 'game_screen.dart';
 import '../screens/settings_screen.dart';
 import '../services/ads_service.dart';
 import '../helpers/ad_helper.dart';
@@ -56,13 +55,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await AdHelper.refreshStatus();
       
-      if (AdHelper.canShowBannerAd()) {
-        await AdsService.showBannerAd();
-        print('✅ Banner ad initialized for free user');
-      } else {
-        print('🚫 Banner ad skipped - user has Remove Ads');
-      }
-      
+      // Removed: Banner ad initialization logic moved to the game screen
+
       await VibrationService.initialize();
       
       if (mounted) {
@@ -173,25 +167,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                       const SizedBox(height: 20),
-                      
-                      Container(
-                        padding: const EdgeInsets.all(40),
-                        decoration: BoxDecoration(
-                          color: Colors.brown[600],
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 15,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.sports_esports,
-                          size: 150,
-                          color: Colors.white,
-                        ),
+
+                      Image.asset(
+                        'assets/icon/icon_in_app.png',
+                        width: 300,
+                        height: 300,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Icon(
+                            Icons.grid_3x3,
+                            size: 150,
+                            color: Colors.blue.shade300,
+                          );
+                        },
                       ),
                       const SizedBox(height: 40),
 
@@ -370,46 +358,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
           
-          if (AdHelper.canShowBannerAd()) _buildBannerAdWidget(),
+          // Removed: Banner ad widget logic moved to the game screen
         ],
       ),
     );
   }
 
-  Widget _buildBannerAdWidget() {
-    final bannerAd = AdsService.bannerAd;
-    
-    if (bannerAd != null) {
-      return Container(
-        alignment: Alignment.center,
-        width: bannerAd.size.width.toDouble(),
-        height: bannerAd.size.height.toDouble(),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          border: Border(
-            top: BorderSide(color: Colors.grey[300]!, width: 1),
-          ),
-        ),
-        child: AdWidget(ad: bannerAd),
-      );
-    }
-    
-    return Container(
-      height: 50,
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        border: Border(
-          top: BorderSide(color: Colors.grey[300]!, width: 1),
-        ),
-      ),
-      child: const Center(
-        child: Text(
-          'Ad Loading...',
-          style: TextStyle(color: Colors.grey, fontSize: 12),
-        ),
-      ),
-    );
-  }
+  // Removed: _buildBannerAdWidget() method is no longer needed here
 
   Widget _buildDifficultyCard(Difficulty difficulty, String displayName, String description, Color color, IconData icon) {
     return Card(
