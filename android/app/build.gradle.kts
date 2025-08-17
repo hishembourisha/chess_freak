@@ -31,7 +31,7 @@ android {
 
     defaultConfig {
         applicationId = "com.engineeryourconvenience.chess_freak" // Consider changing this for a real app, it has "example" in it
-        minSdk = 23
+        minSdkVersion(flutter.minSdkVersion)
         targetSdk = 35 
         versionCode = 1
         versionName = "1.0.0"

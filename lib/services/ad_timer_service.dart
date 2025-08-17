@@ -15,7 +15,7 @@ class AdTimerService {
   static DateTime? _sessionStartTime;
   
   // Testing vs Production intervals
-  static const int _testAdIntervalMinutes = 5; // For testing
+  static const int _testAdIntervalMinutes = 1; // For testing
   static const bool _useProgressiveIntervals = true; // Set to true for production
   
   // Progressive intervals: 5min, 7min, 10min, then 10min

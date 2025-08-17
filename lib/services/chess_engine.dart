@@ -1,11 +1,11 @@
-// File: lib/services/chess_engine.dart - Advanced engine without undo functionality
+// lib/services/chess_engine.dart - Pure Stockfish integration (heuristic AI disabled)
 
 import 'dart:math';
 
 enum PieceType { pawn, rook, knight, bishop, queen, king }
 enum PieceColor { white, black }
 enum GameState { playing, check, checkmate, stalemate, draw }
-enum Difficulty { beginner, intermediate, advanced }
+enum Difficulty { beginner, intermediate, advanced, grandmaster }
 
 class ChessPiece {
   final PieceType type;
@@ -115,7 +115,10 @@ class ChessEngine {
   // 50-move rule counter
   int halfmoveClock = 0;
 
-  ChessEngine({this.difficulty = Difficulty.beginner}) {
+  // STOCKFISH: Flag to indicate we're using external AI
+  bool useStockfishOnly = true;
+
+  ChessEngine({this.difficulty = Difficulty.beginner, this.useStockfishOnly = true}) {
     initializeBoard();
   }
 
@@ -159,6 +162,154 @@ class ChessEngine {
     halfmoveClock = 0;
     
     lastMove = null;
+  }
+
+  /// Returns [row, col] of the king that is currently in check,
+  /// or null if there is no check.
+  List<int>? getCheckedKingSquare() {
+    if (gameState != GameState.check) return null;
+
+    final kingColor = currentPlayer; // The side to move is the one in check
+    for (int row = 0; row < 8; row++) {
+      for (int col = 0; col < 8; col++) {
+        final p = board[row][col];
+        if (p?.type == PieceType.king && p?.color == kingColor) {
+          return [row, col];
+        }
+      }
+    }
+    return null;
+  }
+
+  // STOCKFISH: Export current position to FEN for Stockfish
+  String toFEN() {
+    final sb = StringBuffer();
+    
+    // Board position
+    for (int r = 0; r < 8; r++) {
+      int empty = 0;
+      for (int c = 0; c < 8; c++) {
+        final p = board[r][c];
+        if (p == null) {
+          empty++;
+        } else {
+          if (empty > 0) { 
+            sb.write(empty); 
+            empty = 0; 
+          }
+          String ch;
+          switch (p.type) {
+            case PieceType.pawn:   ch = 'p'; break;
+            case PieceType.knight: ch = 'n'; break;
+            case PieceType.bishop: ch = 'b'; break;
+            case PieceType.rook:   ch = 'r'; break;
+            case PieceType.queen:  ch = 'q'; break;
+            case PieceType.king:   ch = 'k'; break;
+          }
+          sb.write(p.color == PieceColor.white ? ch.toUpperCase() : ch);
+        }
+      }
+      if (empty > 0) sb.write(empty);
+      if (r != 7) sb.write('/');
+    }
+
+    // Active color
+    final side = currentPlayer == PieceColor.white ? 'w' : 'b';
+
+    // Castling rights
+    String rights = '';
+    bool _hasPiece(int r, int c, PieceType t, PieceColor col) {
+      final p = board[r][c];
+      return p != null && p.type == t && p.color == col;
+    }
+    
+    if (!whiteKingMoved && !whiteKingSideRookMoved && 
+        _hasPiece(7, 7, PieceType.rook, PieceColor.white)) {
+      rights += 'K';
+    }
+    if (!whiteKingMoved && !whiteQueenSideRookMoved && 
+        _hasPiece(7, 0, PieceType.rook, PieceColor.white)) {
+      rights += 'Q';
+    }
+    if (!blackKingMoved && !blackKingSideRookMoved && 
+        _hasPiece(0, 7, PieceType.rook, PieceColor.black)) {
+      rights += 'k';
+    }
+    if (!blackKingMoved && !blackQueenSideRookMoved && 
+        _hasPiece(0, 0, PieceType.rook, PieceColor.black)) {
+      rights += 'q';
+    }
+    if (rights.isEmpty) rights = '-';
+
+    // En passant target
+    String ep;
+    if (enPassantRow != null && enPassantCol != null) {
+      final file = String.fromCharCode('a'.codeUnitAt(0) + enPassantCol!);
+      final rank = (8 - enPassantRow!).toString();
+      ep = '$file$rank';
+    } else {
+      ep = '-';
+    }
+
+    // Halfmove and fullmove counters
+    final half = halfmoveClock;
+    final full = (moveHistory.length ~/ 2) + 1;
+
+    return '${sb.toString()} $side $rights $ep $half $full';
+  }
+
+  // STOCKFISH: Apply a UCI move from Stockfish
+  bool applyUCIMove(String uci) {
+    if (uci.length < 4) return false;
+    
+    int _fileToCol(String f) => f.codeUnitAt(0) - 'a'.codeUnitAt(0);
+    int _rankToRow(int r) => 8 - r;
+
+    final fromFile = uci[0];
+    final fromRank = int.parse(uci[1]);
+    final toFile   = uci[2];
+    final toRank   = int.parse(uci[3]);
+
+    final fromCol = _fileToCol(fromFile);
+    final fromRow = _rankToRow(fromRank);
+    final toCol   = _fileToCol(toFile);
+    final toRow   = _rankToRow(toRank);
+
+    print('🔄 Applying UCI move: $uci -> ($fromRow,$fromCol) to ($toRow,$toCol)');
+
+    // Handle promotion if present
+    PieceType? promotionType;
+    if (uci.length == 5) {
+      switch (uci[4].toLowerCase()) {
+        case 'q': promotionType = PieceType.queen; break;
+        case 'r': promotionType = PieceType.rook; break;
+        case 'b': promotionType = PieceType.bishop; break;
+        case 'n': promotionType = PieceType.knight; break;
+      }
+      print('🤴 Promotion detected: ${uci[4]} -> $promotionType');
+    }
+
+    // Validate bounds
+    if (fromRow < 0 || fromRow > 7 || fromCol < 0 || fromCol > 7 ||
+        toRow < 0 || toRow > 7 || toCol < 0 || toCol > 7) {
+      print('❌ UCI move out of bounds: $uci');
+      return false;
+    }
+
+    // Apply the move using existing makeMove logic
+    final success = makeMove(fromRow, fromCol, toRow, toCol);
+    
+    if (success && promotionType != null) {
+      // Handle promotion after the move
+      board[toRow][toCol] = ChessPiece(
+        type: promotionType,
+        color: currentPlayer == PieceColor.white ? PieceColor.black : PieceColor.white,
+        hasMoved: true,
+      );
+      print('✅ Promotion applied: $promotionType');
+    }
+    
+    return success;
   }
 
   bool isValidMove(int fromRow, int fromCol, int toRow, int toCol) {
@@ -276,7 +427,7 @@ class ChessEngine {
       if ((piece.color == PieceColor.white && toRow == 0) ||
           (piece.color == PieceColor.black && toRow == 7)) {
         isPawnPromotion = true;
-        promotionPiece = PieceType.queen; // Always promote to queen for AI simplicity
+        promotionPiece = PieceType.queen; // Always promote to queen for simplicity
       }
     }
     
@@ -343,7 +494,14 @@ class ChessEngine {
     return moves;
   }
 
+  // DISABLED: Heuristic AI methods when using Stockfish
   ChessMove? getBestMove() {
+    if (useStockfishOnly) {
+      print('🚫 getBestMove() called but useStockfishOnly=true - returning null');
+      return null; // Force use of Stockfish only
+    }
+    
+    // Legacy heuristic AI code (kept for fallback but disabled by default)
     final allMoves = _getAllValidMoves(currentPlayer);
     if (allMoves.isEmpty) return null;
     
@@ -353,10 +511,12 @@ class ChessEngine {
       case Difficulty.intermediate:
         return _getIntermediateMove(allMoves);
       case Difficulty.advanced:
+      case Difficulty.grandmaster:
         return _getAdvancedMove(allMoves);
     }
   }
 
+  // LEGACY: Heuristic AI methods (disabled when useStockfishOnly=true)
   ChessMove _getBeginnerMove(List<ChessMove> moves) {
     // Simple strategy: prefer captures, otherwise random
     final captureMoves = moves.where((m) => m.capturedPiece != null).toList();
@@ -824,7 +984,7 @@ class ChessEngine {
       print('🤝 STALEMATE detected!');
       gameState = GameState.stalemate;
     } else if (halfmoveClock >= 100) {
-      print('📏 50-MOVE RULE draw!');
+      print('📋 50-MOVE RULE draw!');
       gameState = GameState.draw;
     } else {
       print('▶️ Game continues - ${allValidMoves.length} moves available');
@@ -844,7 +1004,7 @@ class ChessEngine {
     return (10 - centerDistance * 2).round();
   }
 
-  // Board manipulation for AI search
+  // LEGACY: Board manipulation for AI search (kept for compatibility)
   List<List<ChessPiece?>> _copyBoard() {
     return board.map((row) => 
       row.map((piece) => piece?.copy()).toList()

@@ -65,6 +65,15 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
     super.dispose();
   }
 
+  String _formatTimeWithHours(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final remainingSeconds = seconds % 60;
+    
+    // Always show hours format (HH:MM:SS)
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final difficultyStyle = _getDifficultyStyle(widget.difficulty);
@@ -102,7 +111,7 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
               Text(
                 widget.difficulty.toUpperCase(),
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                   color: difficultyStyle['color'],
                   letterSpacing: 0.5,
@@ -137,10 +146,10 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
               ),
               const SizedBox(width: 8),
               Text(
-                GameTimerService.formatTime(_currentTime),
+                _formatTimeWithHours(_currentTime),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 12,
                   color: Colors.blue.shade700,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -154,7 +163,7 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
           onTap: () => _showRestartDialog(context),
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.orange.shade100,
               borderRadius: BorderRadius.circular(8),
@@ -201,6 +210,13 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
           'borderColor': Colors.red.shade200,
           'icon': Icons.sentiment_very_dissatisfied,
         };
+      case 'grandmaster':
+        return {
+          'color': Colors.purple,
+          'backgroundColor': Colors.purple.shade50,
+          'borderColor': Colors.purple.shade200,
+          'icon': Icons.star,
+        };
       default:
         return {
           'color': Colors.blue,
@@ -221,11 +237,11 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
           children: [
             Icon(Icons.refresh, color: Colors.orange),
             SizedBox(width: 8),
-            Text('Restart Game'),
+            Text('Restart Chess Game'),
           ],
         ),
         content: const Text(
-          'Are you sure you want to restart the game? All progress will be lost.',
+          'Are you sure you want to restart the chess game? All progress will be lost.',
         ),
         actions: [
           TextButton(
@@ -239,10 +255,6 @@ class _ChessGameInfoHeaderState extends State<ChessGameInfoHeader> {
             onPressed: () {
               VibrationService.buttonPressed();
               Navigator.of(context).pop();
-              GameTimerService.stop();
-              setState(() {
-                _currentTime = 0;
-              });
               widget.onRestartGame?.call();
             },
             style: ElevatedButton.styleFrom(

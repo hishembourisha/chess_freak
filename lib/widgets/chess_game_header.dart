@@ -215,6 +215,8 @@ class _ChessGameHeaderState extends State<ChessGameHeader> {
         return 'MEDIUM';
       case Difficulty.advanced:
         return 'HARD';
+      case Difficulty.grandmaster:
+        return 'GRANDMASTER';
     }
   }
 
@@ -241,6 +243,13 @@ class _ChessGameHeaderState extends State<ChessGameHeader> {
           'backgroundColor': Colors.red.shade50,
           'borderColor': Colors.red.shade200,
           'icon': Icons.sentiment_very_dissatisfied,
+        };
+      case Difficulty.grandmaster:
+        return {
+          'color': Colors.purple,
+          'backgroundColor': Colors.purple.shade50,
+          'borderColor': Colors.purple.shade200,
+          'icon': Icons.help_outline,
         };
     }
   }

@@ -1,4 +1,4 @@
-// File: lib/widgets/chess_board.dart - Smooth, no vibration version
+// File: lib/widgets/chess_board.dart - Pure Stockfish version (no heuristic AI)
 
 import 'package:flutter/material.dart';
 import '../services/chess_engine.dart';
@@ -7,12 +7,14 @@ class ChessBoardWidget extends StatefulWidget {
   final ChessEngine engine;
   final Function(ChessMove)? onMoveMade;
   final bool isPlayerWhite;
+  final bool useStockfish; // NEW: Flag to disable heuristic AI
 
   const ChessBoardWidget({
     super.key,
     required this.engine,
     this.onMoveMade,
     this.isPlayerWhite = true,
+    this.useStockfish = true, // NEW: Default to Stockfish only
   });
 
   @override
@@ -24,7 +26,6 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
   int? selectedRow;
   int? selectedCol;
   List<List<int>> validMoves = [];
-  bool isThinking = false;
   
   // Game end visualization - STABLE state management
   bool isShowingGameEndVisualization = false;
@@ -58,10 +59,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     _lastBoardState = _copyBoard(widget.engine.board);
     _lastGameState = widget.engine.gameState;
     
-    // DELAYED: Check for AI move after widget is fully built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForAIMove();
-    });
+    // REMOVED: No auto AI move checking - let game_screen.dart handle it
   }
 
   @override
@@ -120,12 +118,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _lastBoardState = _copyBoard(currentBoard);
       _lastGameState = currentGameState;
       
-      // SMOOTH: Use a microtask to avoid immediate rebuilds during move processing
-      Future.microtask(() {
-        if (mounted) {
-          _checkForAIMove();
-        }
-      });
+      // REMOVED: No auto AI move checking - pure view widget now
     }
   }
 
@@ -167,7 +160,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
   }
 
   // SMOOTH: Start game end visualization without causing layout shifts
-  Future<void> _startGameEndVisualization() async {
+  Future<void> startGameEndVisualization() async {
     if (widget.engine.gameState != GameState.checkmate && 
         widget.engine.gameState != GameState.stalemate) {
       return;
@@ -180,7 +173,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     final kingPosition = _findKingPosition(widget.engine.currentPlayer);
     
     if (kingPosition == null) {
-      print('❌ Could not find king position for visualization');
+      print('⚠️ Could not find king position for visualization');
       return;
     }
     
@@ -221,107 +214,12 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     }
   }
 
-  void _checkForAIMove() {
-    // STABILITY: Debounce AI move checks to prevent rapid firing
-    if (isThinking) return;
-    
-    if ((widget.engine.gameState == GameState.playing || widget.engine.gameState == GameState.check) &&
-        ((widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.black) ||
-        (!widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.white))) {
-      _makeAIMove();
-    }
-  }
-
-  Future<void> _makeAIMove() async {
-    if (isThinking) return;
-    
-    // SMOOTH: Single state update for thinking mode
-    if (mounted) {
-      setState(() {
-        isThinking = true;
-      });
-    }
-
-    print('🤖 === AI MOVE DEBUG START ===');
-    print('Game state: ${widget.engine.gameState}');
-    print('Current player: ${widget.engine.currentPlayer}');
-    print('Is game over: ${widget.engine.isGameOver}');
-    print('Is in check: ${widget.engine.isCheck}');
-    
-    // AI thinking delay based on difficulty
-    await Future.delayed(Duration(
-      milliseconds: widget.engine.difficulty == Difficulty.beginner 
-          ? 400  // Slightly faster for better UX
-          : widget.engine.difficulty == Difficulty.intermediate 
-              ? 800 
-              : 1200
-    ));
-
-    final aiMove = widget.engine.getBestMove();
-    print('🎲 getBestMove() returned: $aiMove');
-    
-    if (aiMove != null) {
-      print('🔥 Attempting to make move: ${aiMove.fromRow},${aiMove.fromCol} -> ${aiMove.toRow},${aiMove.toCol}');
-      
-      final success = widget.engine.makeMove(
-        aiMove.fromRow,
-        aiMove.fromCol,
-        aiMove.toRow,
-        aiMove.toCol,
-      );
-      print('✅ Move execution result: $success');
-      
-      if (success) {
-        print('🎉 Move successful! New game state: ${widget.engine.gameState}');
-        
-        // SMOOTH: Single animation trigger instead of multiple
-        _pieceAnimationController.forward().then((_) {
-          if (mounted) {
-            _pieceAnimationController.reset();
-          }
-        });
-
-        // Check if game ended and start visualization
-        if (widget.engine.isGameOver) {
-          await _startGameEndVisualization();
-        }
-
-        // SMOOTH: Single callback with state update
-        if (mounted) {
-          setState(() {
-            isThinking = false;
-          });
-          widget.onMoveMade?.call(aiMove);
-        }
-      } else {
-        print('💥 Move failed even though it was returned by getBestMove()!');
-        if (mounted) {
-          setState(() {
-            isThinking = false;
-          });
-        }
-      }
-    } else {
-      print('❌ getBestMove() returned null!');
-      
-      if (widget.engine.isGameOver) {
-        print('🏁 Game is actually over! Should trigger game over dialog...');
-        await _startGameEndVisualization();
-      }
-      
-      if (mounted) {
-        setState(() {
-          isThinking = false;
-        });
-      }
-    }
-
-    print('🤖 === AI MOVE DEBUG END ===');
-  }
+  // REMOVED: _checkForAIMove and _makeAIMove methods
+  // The game screen now handles all AI logic through Stockfish
 
   void _onSquareTapped(int row, int col) {
     // STABILITY: Prevent interactions during animations or game over
-    if (isThinking || widget.engine.isGameOver || isShowingGameEndVisualization) return;
+    if (widget.engine.isGameOver || isShowingGameEndVisualization) return;
 
     final isPlayerTurn = (widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.white) ||
                         (!widget.isPlayerWhite && widget.engine.currentPlayer == PieceColor.black);
@@ -359,16 +257,13 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
 
             // Check if game ended after player move and start visualization
             if (widget.engine.isGameOver) {
-              _startGameEndVisualization().then((_) {
+              startGameEndVisualization().then((_) {
                 widget.onMoveMade?.call(move);
               });
             } else {
               widget.onMoveMade?.call(move);
               
-              // DELAYED: Check for AI move after UI settles
-              Future.delayed(const Duration(milliseconds: 50), () {
-                _checkForAIMove();
-              });
+              // REMOVED: No auto AI move checking - let game_screen.dart handle it
             }
           }
           
@@ -561,32 +456,8 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
             height: 50, // Fixed height
             child: Column(
               children: [
-                if (isThinking)
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'AI is thinking...',
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (isShowingGameEndVisualization)
+                // REMOVED: AI thinking indicator - that's handled by game_screen.dart now
+                if (isShowingGameEndVisualization)
                   Container(
                     padding: const EdgeInsets.all(8),
                     child: Row(
@@ -633,6 +504,11 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
         ((widget.engine.lastMove!.fromRow == row && widget.engine.lastMove!.fromCol == col) ||
          (widget.engine.lastMove!.toRow == row && widget.engine.lastMove!.toCol == col));
 
+    // NEW: Check highlighting - get checked king square
+    final checkedKing = widget.engine.getCheckedKingSquare();
+    final isCheckKingSquare = checkedKing != null &&
+        checkedKing[0] == row && checkedKing[1] == col;
+
     // Check if this square should be highlighted for game end visualization
     final squareKey = '$row,$col';
     final isGameEndHighlighted = isShowingGameEndVisualization && highlightedSquares.contains(squareKey);
@@ -641,6 +517,9 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     Color squareColor;
     if (isSelected) {
       squareColor = Colors.blue[300]!;
+    } else if (isCheckKingSquare) {
+      // NEW: Subtle red warning overlay only on the checked king's square
+      squareColor = Colors.red.withOpacity(0.35);
     } else if (isGameEndHighlighted) {
       final baseColor = widget.engine.gameState == GameState.checkmate 
           ? Colors.red 
@@ -672,11 +551,13 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
                           : Colors.orange[800]!, 
                       width: 2
                     )
-                  : null,
+                  : isCheckKingSquare
+                      ? Border.all(color: Colors.red[800]!, width: 2)
+                      : null,
         ),
         child: Stack(
           children: [
-            if (isValidMove && !isSelected && !isGameEndHighlighted)
+            if (isValidMove && !isSelected && !isGameEndHighlighted && !isCheckKingSquare)
               Center(
                 child: Container(
                   width: piece != null ? 40 : 20,
@@ -752,7 +633,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       case GameState.draw:
         return Colors.blue;
       default:
-        return isThinking ? Colors.purple : Colors.green;
+        return Colors.green; // REMOVED: isThinking reference
     }
   }
 
@@ -763,7 +644,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
           : 'Stalemate!';
     }
     
-    if (isThinking) return 'AI Thinking...';
+    // REMOVED: isThinking check
     
     switch (widget.engine.gameState) {
       case GameState.check:

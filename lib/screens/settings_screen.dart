@@ -27,7 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _removeAdsPrice = 'Loading...';
 
   // Privacy policy URL
-  static const String _privacyPolicyUrl = 'https://sites.google.com/view/sudokufreakprivacypolicy';
+  static const String _privacyPolicyUrl = 'https://sites.google.com/view/chessfreakprivacypolicy';
 
   @override
   void initState() {

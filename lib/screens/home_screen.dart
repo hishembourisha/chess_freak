@@ -1,5 +1,4 @@
-// File: lib/screens/home_screen.dart - Updated with Sudoku-inspired navigation
-
+// lib/screens/home_screen.dart - Updated with Sudoku-inspired navigation
 import 'package:flutter/material.dart';
 import 'game_screen.dart';
 import '../screens/settings_screen.dart';
@@ -282,6 +281,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       _buildDifficultyCard(Difficulty.intermediate, 'Medium', 'Good challenge for casual players', Colors.orange, Icons.sentiment_neutral),
                       const SizedBox(height: 12),
                       _buildDifficultyCard(Difficulty.advanced, 'Hard', 'Challenging for experienced players', Colors.red, Icons.sentiment_very_dissatisfied),
+                      const SizedBox(height: 12),
+                      _buildDifficultyCard(Difficulty.grandmaster, 'Grandmaster', 'Ultimate challenge for chess masters', Colors.purple, Icons.star),
                       const SizedBox(height: 30),
                       
                       OutlinedButton.icon(
@@ -340,7 +341,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            _buildFeatureRow(Icons.speed, '3 AI Difficulty Levels'),
+                            _buildFeatureRow(Icons.speed, '4 AI Difficulty Levels'),
                             _buildFeatureRow(Icons.visibility, 'Move Highlighting'),
                             _buildFeatureRow(Icons.inventory, 'Captured Pieces Display'),
                             _buildFeatureRow(Icons.smart_toy, 'Smart Chess AI'),
@@ -468,6 +469,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return 'Medium';
       case Difficulty.advanced:
         return 'Hard';
+      case Difficulty.grandmaster:
+        return 'Grandmaster';
     }
   }
 
@@ -479,6 +482,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return 'Basic strategy and tactics';
       case Difficulty.advanced:
         return 'Advanced algorithms and planning';
+      case Difficulty.grandmaster:
+        return 'World-class AI strength';
     }
   }
 
@@ -503,6 +508,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Icons.sentiment_neutral;
       case Difficulty.advanced:
         return Icons.sentiment_very_dissatisfied;
+      case Difficulty.grandmaster:
+        return Icons.star;
     }
   }
 
@@ -514,6 +521,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return Colors.orange;
       case Difficulty.advanced:
         return Colors.red;
+      case Difficulty.grandmaster:
+        return Colors.purple;
     }
   }
 
@@ -741,6 +750,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _startGame(Difficulty.advanced, deleteExisting: true);
             },
             child: const Text('Hard'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startGame(Difficulty.grandmaster, deleteExisting: true);
+            },
+            child: const Text('Grandmaster'),
           ),
         ],
       ),

@@ -1,7 +1,8 @@
-// lib/screens/chess_game_screen.dart - Enhanced with working ad timer
+// lib/screens/chess_game_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // NEW: Import for kDebugMode
+import 'package:flutter/foundation.dart';
 import '../services/chess_engine.dart';
+import '../services/stockfish_service.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/captured_pieces_widget.dart';
 import '../services/chess_save_service.dart';
@@ -10,8 +11,8 @@ import '../services/vibration_service.dart';
 import '../widgets/chess_game_info_widget.dart';
 import '../helpers/ad_helper.dart';
 import '../services/game_timer_service.dart';
-import '../services/ad_timer_service.dart'; // NEW: Import ad timer
-import '../services/ads_service.dart';       // NEW: Import ads service
+import '../services/ad_timer_service.dart';
+import '../services/ads_service.dart';
 import '../widgets/banner_ad_widget.dart';
 
 class ChessGameScreen extends StatefulWidget {
@@ -32,10 +33,26 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
   bool _isColorSelected = false;
   int _gameKey = 0;
   
+  // NEW: State variable to manage initialization state
+  bool _isInitializing = true;
+  
   // Game over dialog management
   bool _isGameOverDialogShowing = false;
   bool _gameOverDetected = false;
   
+  // STOCKFISH: Pure Stockfish integration - no heuristic AI
+  final StockfishService _stockfish = StockfishService();
+  bool _aiThinking = false;
+
+  // FIXED: Convert difficulty to AI level with stronger settings
+  AiLevel _aiLevelFromDifficulty(Difficulty d) {
+    switch (d) {
+      case Difficulty.beginner: return AiLevel.easy;
+      case Difficulty.intermediate: return AiLevel.medium;
+      case Difficulty.advanced: return AiLevel.hard;
+      case Difficulty.grandmaster: return AiLevel.grandmaster;
+    }
+  }
 
   @override
   void initState() {
@@ -48,29 +65,23 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     
     _loadAdStatus();
     _ensureBackgroundMusicPlaying();
-    
-    // NEW: Initialize ads and start timer
     _initializeAds();
   }
 
   @override
   void dispose() {
     GameTimerService.stop();
-    AdTimerService.stopAdTimer(); // NEW: Stop ad timer when leaving
+    AdTimerService.stopAdTimer();
+    _stockfish.dispose(); // STOCKFISH: Dispose engine
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  // NEW: Initialize ads and start timer
   Future<void> _initializeAds() async {
     try {
-      // Initialize AdHelper first
       await AdHelper.initialize();
-      
-      // Initialize AdsService
       await AdsService.initialize();
       
-      // Start ad timer only for free users
       if (AdHelper.shouldShowAds()) {
         AdTimerService.startAdTimer();
         print('🕐 Ad timer started for chess game');
@@ -78,11 +89,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         print('🚫 Ad timer not started - user has Remove Ads');
       }
       
-      // Debug ad status
       AdHelper.debugAdStatus();
       AdTimerService.debugTimerStatus();
     } catch (e) {
-      print('❌ Error initializing ads: $e');
+      print('⚠️ Error initializing ads: $e');
     }
   }
 
@@ -93,7 +103,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         await SoundService.startBackgroundMusic();
       }
     } catch (e) {
-      print('❌ Error starting background music: $e');
+      print('⚠️ Error starting background music: $e');
     }
   }
 
@@ -101,23 +111,37 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
   void didChangeDependencies() {
     super.didChangeDependencies();
     
+    // Only run this once to prevent state issues on resume
+    if (_isInitializing) {
+      _processNavigationArguments();
+    }
+  }
+  
+  // NEW: Refactor argument processing into a separate method
+  void _processNavigationArguments() {
     final args = ModalRoute.of(context)?.settings.arguments;
     
     if (args is Map<String, dynamic>) {
-      setState(() {
-        _difficulty = args['difficulty'] ?? Difficulty.beginner;
-        _savedGameData = args['savedGameData'];
-        _initialGameTime = _savedGameData?['gameTime'] as int?;
-        
-        if (_savedGameData != null) {
-          print('🔄 Resuming game with difficulty: $_difficulty');
-          _resumeGameFromData();
-        } else {
-          print('🎮 Starting new game with difficulty: $_difficulty');
-          _isColorSelected = false;
-        }
-      });
+      _difficulty = args['difficulty'] ?? Difficulty.beginner;
+      _savedGameData = args['savedGameData'];
+      _initialGameTime = _savedGameData?['gameTime'] as int?;
+      
+      if (_savedGameData != null) {
+        print('📄 Resuming game with difficulty: $_difficulty');
+        _resumeGameFromData();
+      } else {
+        print('🎮 Starting new game with difficulty: $_difficulty');
+        _isColorSelected = false;
+        // The UI will show the color selection, and the game will start from there
+      }
+    } else {
+      // Default to showing color selection if no arguments provided
+      _isColorSelected = false;
     }
+
+    setState(() {
+      _isInitializing = false;
+    });
   }
 
   void _resumeGameFromData() {
@@ -129,14 +153,30 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         _gameStarted = true;
         _isColorSelected = true;
         
+        // STOCKFISH: Set Stockfish level for resumed game
+        _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
+        
         print('✅ Successfully resumed chess game');
         print('🎯 Playing as: ${_isPlayerWhite ? 'White' : 'Black'}');
+        
+        // NEW: Check if it's AI's turn and trigger move
+        final isAITurn = (_isPlayerWhite && _engine.currentPlayer == PieceColor.black) ||
+                        (!_isPlayerWhite && _engine.currentPlayer == PieceColor.white);
+
+        if (isAITurn) {
+          print('🤖 Resuming game on AI turn. Triggering AI move...');
+          // Delay to ensure UI has time to rebuild
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _playAIMoveWithStockfish();
+          });
+        }
+
       } else {
-        print('❌ Failed to restore saved game, falling back to new game');
+        print('⚠️ Failed to restore saved game, falling back to new game');
         _isColorSelected = false;
       }
     } catch (e) {
-      print('❌ Error resuming game: $e');
+      print('⚠️ Error resuming game: $e');
       _isColorSelected = false;
     }
   }
@@ -151,7 +191,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         if (_gameStarted && !_engine.isGameOver) {
           GameTimerService.pause();
         }
-        // NEW: Pause ad timer when app is paused
         AdTimerService.pauseAdTimer();
         SoundService.pauseBackgroundMusic();
         _autoSaveGame();
@@ -163,7 +202,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         _ensureBackgroundMusicPlaying();
         _loadAdStatus();
         
-        // NEW: Resume ad timer if still free user
+        // REFINED: Check ad timer status on resume
         if (AdHelper.shouldShowAds() && !AdTimerService.isTimerActive) {
           AdTimerService.startAdTimer();
           print('🔄 Ad timer resumed after app resume');
@@ -182,13 +221,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
           _adsRemoved = !AdHelper.shouldShowAds();
         });
         
-        // NEW: Stop ad timer if user now has Remove Ads
         if (_adsRemoved && AdTimerService.isTimerActive) {
           AdTimerService.stopAdTimer();
           print('🛑 Ad timer stopped - user now has Remove Ads');
-        }
-        // Start ad timer if user is now free
-        else if (!_adsRemoved && !AdTimerService.isTimerActive) {
+        } else if (!_adsRemoved && !AdTimerService.isTimerActive) {
           AdTimerService.startAdTimer();
           print('▶️ Ad timer started - user is now free');
         }
@@ -206,17 +242,18 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       _gameKey++;
       _isGameOverDialogShowing = false;
       _gameOverDetected = false;
+      _aiThinking = false; // STOCKFISH: Reset AI thinking state
     });
     
     _engine = ChessEngine(difficulty: _difficulty);
     GameTimerService.stop();
     
+    // STOCKFISH: Set Stockfish level and start new game
+    _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
+    _stockfish.newGame();
+    
     SoundService.playGameStart();
     
-    print('🎮 Created new chess game');
-    print('🎯 Player is playing as: ${_isPlayerWhite ? 'White' : 'Black'}');
-    
-    // NEW: Show game transition ad when starting new game
     _showGameTransitionAd();
     
     if (!_isPlayerWhite) {
@@ -225,27 +262,26 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
           setState(() {
             _gameStarted = true;
           });
+          // STOCKFISH: If player is black, AI (white) moves first
+          _playAIMoveWithStockfish();
         }
       });
     }
   }
 
-  // NEW: Show ad when game finishes
   void _showGameFinishAd() {
     AdTimerService.showGameFinishAd();
   }
 
-  // NEW: Show ad when transitioning between games
   void _showGameTransitionAd() {
     AdTimerService.showGameTransitionAd();
   }
 
   void _onMoveMade(ChessMove move) {
-    print('📝 Move made: ${move.fromRow},${move.fromCol} -> ${move.toRow},${move.toCol}');
+    print('🏃 Move made: ${move.fromRow},${move.fromCol} -> ${move.toRow},${move.toCol}');
 
     setState(() {
-    // This ensures CapturedPiecesWidget rebuilds when pieces are captured
-    // The chess board handles its own updates separately
+      // This ensures CapturedPiecesWidget rebuilds when pieces are captured
     });
 
     if (!_gameStarted) {
@@ -267,8 +303,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     if (_engine.isGameOver && !_gameOverDetected) {
       _gameOverDetected = true;
       GameTimerService.pause();
-      
-      // NEW: Pause ad timer when game ends
       AdTimerService.pauseAdTimer();
       
       print('🏁 Game over detected, waiting for visualization...');
@@ -280,6 +314,84 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       });
     } else if (_engine.isCheck) {
       VibrationService.heavy();
+    }
+
+    // STOCKFISH: After the human move, let Stockfish reply if game continues
+    if (!_engine.isGameOver && !_aiThinking) {
+      _playAIMoveWithStockfish();
+    }
+  }
+
+  // STOCKFISH: Pure Stockfish AI move logic - no heuristic fallback
+  Future<void> _playAIMoveWithStockfish() async {
+    if (_aiThinking || _engine.isGameOver) return;
+    
+    // Only AI should move when it's the AI's turn
+    final isAITurn = (_isPlayerWhite && _engine.currentPlayer == PieceColor.black) ||
+                      (!_isPlayerWhite && _engine.currentPlayer == PieceColor.white);
+    
+    if (!isAITurn) return;
+    
+    setState(() {
+      _aiThinking = true;
+    });
+    
+    try {
+      print('🤖 thinking...');
+      final fen = _engine.toFEN();
+      print('📋 Current FEN: $fen');
+      
+      final uci = await _stockfish.bestMoveForFen(fen);
+      print('🎯 Stockfish suggests: $uci');
+      
+      final ok = _engine.applyUCIMove(uci);
+      if (ok) {
+        print('✅ Stockfish move applied successfully');
+        setState(() {}); // Rebuild the board
+        _autoSaveGame();
+        
+        // Play sound for AI move
+        final lastMove = _engine.moveHistory.isNotEmpty ? _engine.moveHistory.last : null;
+        if (lastMove != null) {
+          _playMoveSound(lastMove);
+        }
+        
+        // Check for vibration
+        if (_engine.isCheck) {
+          VibrationService.heavy();
+        } else if (lastMove?.capturedPiece != null) {
+          VibrationService.medium();
+        } else {
+          VibrationService.light();
+        }
+        
+        // Check if game is over after AI move
+        if (_engine.isGameOver && !_gameOverDetected) {
+          _gameOverDetected = true;
+          GameTimerService.pause();
+          AdTimerService.pauseAdTimer();
+          
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (mounted && !_isGameOverDialogShowing) {
+              _showGameOverDialog();
+            }
+          });
+        }
+      } else {
+        print('⚠️ Failed to apply Stockfish move: $uci');
+        // REMOVED: No fallback to heuristic AI - pure Stockfish only
+        print('🚫 No fallback AI - pure Stockfish implementation');
+      }
+    } catch (e) {
+      if (kDebugMode) print('⚠️ Stockfish error: $e');
+      // REMOVED: No fallback to heuristic AI - let the game continue without AI move
+      print('🚫 Stockfish failed, no fallback - pure implementation');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _aiThinking = false;
+        });
+      }
     }
   }
 
@@ -301,7 +413,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         SoundService.playMove();
       }
     } catch (e) {
-      print('❌ Error playing move sound: $e');
+      print('⚠️ Error playing move sound: $e');
       SoundService.playButton();
     }
   }
@@ -329,7 +441,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     
     print('🎭 Showing game over dialog');
     
-    // NEW: Show ad when game finishes
     _showGameFinishAd();
     
     String title;
@@ -344,8 +455,8 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
                          (winner == PieceColor.black && !_isPlayerWhite);
         title = playerWon ? 'Congratulations!' : 'Game Over';
         message = playerWon
-            ? 'You won by checkmate!'
-            : 'You lost by checkmate.';
+            ? 'You defeated Stockfish!'
+            : 'Stockfish checkmated you.';
         color = playerWon ? Colors.green : Colors.red;
         icon = playerWon ? Icons.emoji_events : Icons.sentiment_dissatisfied;
         
@@ -434,6 +545,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
                     _buildStatRow('Game Time:', GameTimerService.formatTime(GameTimerService.getCurrentTime())),
                     _buildStatRow('Difficulty:', _getDifficultyName(_engine.difficulty)),
                     _buildStatRow('Played as:', _isPlayerWhite ? 'White' : 'Black'),
+                    _buildStatRow('AI Engine:', 'Stockfish'), // STOCKFISH: Show AI engine
                     if (_engine.gameState == GameState.checkmate)
                       _buildStatRow('Winner:', _engine.winner == PieceColor.white ? 'White' : 'Black'),
                   ],
@@ -544,18 +656,18 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     switch (_engine.gameState) {
       case GameState.checkmate:
         final playerWon = (_engine.winner == PieceColor.white && _isPlayerWhite) ||
-                         (_engine.winner == PieceColor.black && !_isPlayerWhite);
+                          (_engine.winner == PieceColor.black && !_isPlayerWhite);
         if (playerWon) {
-          return 'Great job! Try a harder difficulty for more challenge.';
+          return 'Excellent! You defeated Stockfish at ${_getDifficultyName(_difficulty)} level.';
         } else {
-          return 'Analyze the game to see how you could have avoided checkmate.';
+          return 'Stockfish is a world-class engine. Study your games to improve!';
         }
       case GameState.stalemate:
         return 'Stalemate happens when the king has no legal moves but isn\'t in check.';
       case GameState.draw:
         return 'Draws can result from insufficient material or repetition.';
       default:
-        return 'Keep practicing to improve your chess skills!';
+        return 'Keep practicing against Stockfish to improve your chess skills!';
     }
   }
 
@@ -566,20 +678,25 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       _gameKey++;
       _isGameOverDialogShowing = false;
       _gameOverDetected = false;
+      _aiThinking = false; // STOCKFISH: Reset AI thinking state
     });
     
     GameTimerService.stop();
     _engine = ChessEngine(difficulty: _difficulty);
     ChessSaveService.deleteSavedGame();
+    
+    // STOCKFISH: Reset Stockfish for new game
+    _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
+    _stockfish.newGame();
+    
     SoundService.playGameStart();
     
-    // NEW: Resume ad timer and show transition ad for restart
     if (AdHelper.shouldShowAds()) {
       AdTimerService.startAdTimer();
       _showGameTransitionAd();
     }
     
-    print('🔄 Game restarted with difficulty: $_difficulty');
+    print('🔄 Game restarted with Stockfish at difficulty: $_difficulty');
   }
 
   String _getDifficultyName(Difficulty difficulty) {
@@ -590,13 +707,15 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         return 'Medium';
       case Difficulty.advanced:
         return 'Hard';
+      case Difficulty.grandmaster:
+        return 'Grandmaster';
     }
   }
 
   Widget _buildColorSelectionWidget() {
-    return Container(
+    return SizedBox(
       height: MediaQuery.of(context).size.height - 
-            (AppBar().preferredSize.height + MediaQuery.of(context).padding.top + 60),
+              (AppBar().preferredSize.height + MediaQuery.of(context).padding.top + 60),
       child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -621,7 +740,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
               ),
               const SizedBox(height: 8),
               Text(
-                'Play as White or Black against the AI.',
+                'Play against AI',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.grey[600],
@@ -683,7 +802,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         if (_gameStarted && !_engine.isGameOver) {
           GameTimerService.pause();
         }
-        // NEW: Pause ad timer when leaving screen
         AdTimerService.pauseAdTimer();
         _autoSaveGame();
         return true;
@@ -698,273 +816,147 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
           backgroundColor: Colors.brown[600],
           foregroundColor: Colors.white,
           elevation: 0,
-          // NEW: Debug action to show ad timer status and test ads
           actions: [
-            if (kDebugMode)
-              PopupMenuButton<String>(
-                icon: Icon(Icons.bug_report),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'status':
-                      AdTimerService.debugTimerStatus();
-                      AdHelper.debugAdStatus();
-                      break;
-                    case 'timer_ad':
-                      AdTimerService.debugTriggerAd();
-                      break;
-                    case 'finish_ad':
-                      AdTimerService.debugTriggerGameFinishAd();
-                      break;
-                    case 'transition_ad':
-                      AdTimerService.debugTriggerGameTransitionAd();
-                      break;
-                  }
-                },
-                itemBuilder: (BuildContext context) => [
-                  PopupMenuItem(
-                    value: 'status',
-                    child: Row(
-                      children: [
-                        Icon(Icons.info, size: 20),
-                        SizedBox(width: 8),
-                        Text('Debug Status'),
-                      ],
+            // STOCKFISH: Show AI thinking indicator
+            if (_aiThinking)
+              Container(
+                margin: const EdgeInsets.only(right: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
                     ),
-                  ),
-                  PopupMenuItem(
-                    value: 'timer_ad',
-                    child: Row(
-                      children: [
-                        Icon(Icons.timer, size: 20),
-                        SizedBox(width: 8),
-                        Text('Test Timer Ad'),
-                      ],
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Thinking...',
+                      style: TextStyle(fontSize: 12),
                     ),
-                  ),
-                  PopupMenuItem(
-                    value: 'finish_ad',
-                    child: Row(
-                      children: [
-                        Icon(Icons.flag, size: 20),
-                        SizedBox(width: 8),
-                        Text('Test Finish Ad'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'transition_ad',
-                    child: Row(
-                      children: [
-                        Icon(Icons.refresh, size: 20),
-                        SizedBox(width: 8),
-                        Text('Test Transition Ad'),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
           ],
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: SafeArea(
-                  child: _isColorSelected ? Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          children: [
-                            ChessGameInfoHeader(
-                              difficulty: _getDifficultyName(_engine.difficulty),
-                              initialTime: _initialGameTime ?? 0,
-                            ),
-                            
-                            const SizedBox(height: 16),
-
-                            CapturedPiecesWidget(
-                              engine: _engine,
-                              showWhiteCaptured: _isPlayerWhite,
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            ChessBoardWidget(
-                              key: ValueKey(_gameKey),
-                              engine: _engine,
-                              onMoveMade: _onMoveMade,
-                              isPlayerWhite: _isPlayerWhite,
-                            ),
-                            
-                            const SizedBox(height: 16),
-                            
-                            CapturedPiecesWidget(
-                              engine: _engine,
-                              showWhiteCaptured: !_isPlayerWhite,
-                            ),
-                            
-                            const SizedBox(height: 20),
-                            
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              margin: const EdgeInsets.only(bottom: 20),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.blue.shade200),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+        body: _isInitializing
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: SafeArea(
+                        child: _isColorSelected
+                            ? Column(
                                 children: [
-                                  Icon(
-                                    _isPlayerWhite ? Icons.circle_outlined : Icons.circle,
-                                    color: _isPlayerWhite ? Colors.grey[300] : Colors.grey[800],
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Playing as: ${_isPlayerWhite ? 'White' : 'Black'}',
-                                    style: TextStyle(
-                                      color: Colors.blue.shade700,
-                                      fontWeight: FontWeight.bold,
+                                  Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      children: [
+                                        ChessGameInfoHeader(
+                                          difficulty: _getDifficultyName(_engine.difficulty),
+                                          onRestartGame: _restartGame,
+                                          initialTime: _initialGameTime ?? 0,
+                                        ),
+                                        
+                                        const SizedBox(height: 16),
+
+                                        CapturedPiecesWidget(
+                                          engine: _engine,
+                                          showWhiteCaptured: _isPlayerWhite,
+                                        ),
+                                        
+                                        const SizedBox(height: 16),
+                                        
+                                        // FIXED: Pass useStockfish flag to disable heuristic AI in board
+                                        ChessBoardWidget(
+                                          key: ValueKey(_gameKey),
+                                          engine: _engine,
+                                          onMoveMade: _onMoveMade,
+                                          isPlayerWhite: _isPlayerWhite,
+                                          useStockfish: true, // STOCKFISH: Pure Stockfish mode
+                                        ),
+                                        
+                                        const SizedBox(height: 16),
+                                        
+                                        CapturedPiecesWidget(
+                                          engine: _engine,
+                                          showWhiteCaptured: !_isPlayerWhite,
+                                        ),
+                                        
+                                        const SizedBox(height: 20),
+                                        
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          margin: const EdgeInsets.only(bottom: 20),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.blue.shade200),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                _isPlayerWhite ? Icons.circle_outlined : Icons.circle,
+                                                color: _isPlayerWhite ? Colors.grey[300] : Colors.grey[800],
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Playing as: ${_isPlayerWhite ? 'White' : 'Black'}',
+                                                style: TextStyle(
+                                                  color: Colors.blue.shade700,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        
+                                        if (_adsRemoved)
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            margin: const EdgeInsets.only(bottom: 20),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.shade50,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.green.shade200),
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'Ad-Free Experience',
+                                                  style: TextStyle(
+                                                    color: Colors.green.shade700,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        
+                                        if (AdHelper.canShowBannerAd()) 
+                                          const SizedBox(height: 60),
+                                      ],
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            
-                            if (_adsRemoved)
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.only(bottom: 20),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.green.shade200),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Ad-Free Experience',
-                                      style: TextStyle(
-                                        color: Colors.green.shade700,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            
-                            // NEW: Debug info for development showing all ad types
-                            if (kDebugMode) ...[
-                              if (AdTimerService.isTimerActive)
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.orange.shade200),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.timer, color: Colors.orange.shade700, size: 16),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Ad Timer Active (7min)',
-                                        style: TextStyle(
-                                          color: Colors.orange.shade700,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                margin: const EdgeInsets.only(bottom: 20),
-                                decoration: BoxDecoration(
-                                  color: Colors.purple.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.purple.shade200),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.ads_click, color: Colors.purple.shade700, size: 16),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Ad Types Active',
-                                          style: TextStyle(
-                                            color: Colors.purple.shade700,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '🕐 Timer • 🏁 Game Finish • 🎮 Transitions',
-                                      style: TextStyle(
-                                        color: Colors.purple.shade600,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ] else ...[
-                              if (AdHelper.shouldShowAds())
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  margin: const EdgeInsets.only(bottom: 20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.blue.shade200),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.info, color: Colors.blue.shade700, size: 16),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Ads support free gameplay',
-                                        style: TextStyle(
-                                          color: Colors.blue.shade700,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                            
-                            if (AdHelper.canShowBannerAd()) 
-                              const SizedBox(height: 60),
-                          ],
-                        ),
+                              )
+                            : _buildColorSelectionWidget(),
                       ),
-                    ],
-                  ) : _buildColorSelectionWidget(),
-                ),
+                    ),
+                  ),
+                  
+                  BannerAdWidget(),
+                ],
               ),
-            ),
-            
-            BannerAdWidget(),
-          ],
-        ),
       ),
     );
   }
