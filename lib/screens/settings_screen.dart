@@ -536,48 +536,6 @@ Future<void> _loadSettings() async {
                 ),
 
                 const SizedBox(height: 20),
-
-                // ADDED: Debug section for development
-                if (kDebugMode) ...[
-                  const Text(
-                    'Debug (Development Only)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Card(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.bug_report),
-                          title: const Text('Debug Grant Remove Ads'),
-                          subtitle: const Text('Grant Remove Ads for testing'),
-                          trailing: ElevatedButton(
-                            onPressed: _isLoading ? null : () async {
-                              await IAPService.debugGrantRemoveAds();
-                              await AdHelper.refreshStatus();
-                              await _loadSettings();
-                              _showErrorSnackBar('Debug: Remove Ads granted');
-                            },
-                            child: const Text('Grant'),
-                          ),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.refresh),
-                          title: const Text('Debug AdHelper Status'),
-                          subtitle: const Text('Print current ad status to console'),
-                          trailing: ElevatedButton(
-                            onPressed: () {
-                              AdHelper.debugAdStatus();
-                              IAPService.debugIAPStatus();
-                              _showErrorSnackBar('Debug info printed to console');
-                            },
-                            child: const Text('Debug'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ],
             ),
     );

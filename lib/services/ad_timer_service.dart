@@ -60,7 +60,7 @@ class AdTimerService {
     
     if (kDebugMode) {
       print('▶️ Ad timer started for free user');
-      print('🕐 Next ad in ${_currentAdInterval} minutes');
+      print('🕐 Next ad in $_currentAdInterval minutes');
       print('📅 Timer started at: ${_timerStarted!.toLocal()}');
       if (_useProgressiveIntervals) {
         print('📊 Progressive mode: Session ads: $_adsShownThisSession');
@@ -112,7 +112,7 @@ class AdTimerService {
       if (_useProgressiveIntervals) {
         _restartTimerWithNewInterval();
       } else {
-        if (kDebugMode) print('⏭️ Next ad in ${_currentAdInterval} minutes');
+        if (kDebugMode) print('⏭️ Next ad in $_currentAdInterval minutes');
       }
       
     } catch (e) {
@@ -139,7 +139,7 @@ class AdTimerService {
     
     if (kDebugMode) {
       print('🔄 Timer restarted with ${_currentAdInterval}min interval');
-      print('⏭️ Next ad in ${_currentAdInterval} minutes');
+      print('⏭️ Next ad in $_currentAdInterval minutes');
     }
   }
   
@@ -286,7 +286,7 @@ class AdTimerService {
     print('=== ⏰ Chess Ad Timer Debug ===');
     print('Should Show Ads: ${AdHelper.shouldShowAds()}');
     print('Timer Active: $isTimerActive');
-    print('Current Interval: ${_currentAdInterval} minutes');
+    print('Current Interval: $_currentAdInterval minutes');
     print('Progressive Mode: $_useProgressiveIntervals');
     print('Session Ads: $_adsShownThisSession');
     print('Timer Started: ${_timerStarted?.toLocal() ?? 'Never'}');

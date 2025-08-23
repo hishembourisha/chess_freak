@@ -1,4 +1,4 @@
-// lib/screens/home_screen.dart - Updated with Sudoku-inspired navigation
+// lib/screens/home_screen.dart - Updated with clean Stockfish initialization
 import 'package:flutter/material.dart';
 import 'game_screen.dart';
 import '../screens/settings_screen.dart';
@@ -64,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         AdHelper.debugAdStatus();
       }
     } catch (e) {
-      print('❌ Error initializing services in HomeScreen: $e');
+      print('Error initializing services in HomeScreen: $e');
     }
   }
 
@@ -72,16 +72,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    print('📱 App lifecycle changed to: $state');
+    print('App lifecycle changed to: $state');
     
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        print('⏸️ Pausing background music due to app lifecycle');
+        print('Pausing background music due to app lifecycle');
         SoundService.pauseBackgroundMusic();
         break;
       case AppLifecycleState.resumed:
-        print('▶️ Attempting to resume background music due to app lifecycle');
+        print('Attempting to resume background music due to app lifecycle');
         if (SoundService.isMusicEnabled) {
           SoundService.resumeBackgroundMusic();
         }
@@ -95,13 +95,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _checkForSavedGame() async {
     try {
-      print('🔍 Checking for saved chess game...');
+      print('Checking for saved chess game...');
       final hasSaved = await ChessSaveService.hasSavedGame();
-      print('📂 Has saved game: $hasSaved');
+      print('Has saved game: $hasSaved');
       
       if (hasSaved) {
         final gameInfo = await ChessSaveService.getSavedGameInfo();
-        print('📊 Game info: $gameInfo');
+        print('Game info: $gameInfo');
         
         if (mounted) {
           setState(() {
@@ -118,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      print('❌ Error checking for saved game: $e');
+      print('Error checking for saved game: $e');
       if (mounted) {
         setState(() {
           _hasSavedGame = false;
@@ -528,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showResumeDialog() {
     if (_savedGameInfo != null && !_isLoading) {
-      print('🎮 Showing resume dialog for chess game');
+      print('Showing resume dialog for chess game');
       
       SoundService.playButton();
       VibrationService.buttonPressed();
@@ -660,13 +660,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     
     try {
-      print('📂 Loading saved chess game data...');
+      print('Loading saved chess game data...');
       
       final savedData = await ChessSaveService.loadGame();
       
       if (savedData != null && mounted) {
-        print('✅ Saved chess game loaded successfully');
-        print('🎯 Game data: difficulty=${savedData['difficulty']}, gameTime=${savedData['gameTime']}');
+        print('Saved chess game loaded successfully');
+        print('Game data: difficulty=${savedData['difficulty']}, gameTime=${savedData['gameTime']}');
         
         SoundService.playButton();
         VibrationService.buttonPressed();
@@ -690,7 +690,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
         });
       } else {
-        print('❌ Failed to load saved chess game data');
+        print('Failed to load saved chess game data');
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -705,7 +705,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      print('❌ Error resuming saved game: $e');
+      print('Error resuming saved game: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -763,7 +763,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // UPDATED: Use navigation arguments like Sudoku
+  // CRITICAL FIX: Enhanced _startGame method with proper cleanup timing
   void _startGame(Difficulty difficulty, {bool deleteExisting = false}) {
     if (_isLoading) return;
     
@@ -771,7 +771,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _isLoading = true;
     });
     
-    print('🎮 Starting chess game with difficulty: $difficulty');
+    print('Starting chess game with difficulty: $difficulty');
     
     if (deleteExisting) {
       ChessSaveService.deleteSavedGame();
@@ -780,22 +780,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     SoundService.playButton();
     VibrationService.buttonPressed();
     
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ChessGameScreen(),
-        settings: RouteSettings(arguments: {
-          'difficulty': difficulty,
-        }),
-      ),
-    ).then((_) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        _checkForSavedGame();
-        _loadAdStatus();
-      }
+    // CRITICAL FIX: Add delay to ensure any previous Stockfish instances are fully disposed
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ChessGameScreen(),
+          settings: RouteSettings(arguments: {
+            'difficulty': difficulty,
+          }),
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          _checkForSavedGame();
+          _loadAdStatus();
+        }
+      });
     });
   }
 

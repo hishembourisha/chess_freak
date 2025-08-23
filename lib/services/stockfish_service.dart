@@ -1,4 +1,4 @@
-// lib/services/stockfish_service.dart - Enhanced with stronger settings
+// lib/services/stockfish_service.dart - Enhanced with improved disposal
 
 import 'dart:async';
 import 'package:stockfish/stockfish.dart' as sf;
@@ -76,7 +76,7 @@ class StockfishService {
     }
     _engine!.stdin = 'isready';
     await _waitReadyOk();
-    print('🤖 Stockfish level set to: $level');
+    print('Stockfish level set to: $level');
   }
 
   Future<String> bestMoveForFen(String fen) async {
@@ -94,20 +94,20 @@ class StockfishService {
         break;
       case AiLevel.medium:
         // Medium: Moderate thinking time
-        searchCommand = 'go depth 4 movetime 8000'; // 4 ply depth OR 8 seconds max
+        searchCommand = 'go depth 3 movetime 6000'; // 3 ply depth OR 6 seconds max
         break;
       case AiLevel.hard:
         // Hard: Deep analysis - use both time and depth for maximum strength
-        searchCommand = 'go depth 14 movetime 12000'; // 14 ply depth OR 12 seconds max
+        searchCommand = 'go depth 10 movetime 10000'; // 10 ply depth OR 10 seconds max
         break;
       case AiLevel.grandmaster:
         // Grandmaster: Very deep analysis - use more time and depth
-        searchCommand = 'go depth 20 movetime 20000'; // 20 ply depth OR 20 seconds max
+        searchCommand = 'go depth 20 movetime 16000'; // 20 ply depth OR 16 seconds max
         break;
         
     }
     
-    print('🔍 Stockfish search: $searchCommand');
+    print('Stockfish search: $searchCommand');
     
     _bestmoveWaiter = Completer<String>();
     _engine!.stdin = searchCommand;
@@ -115,19 +115,19 @@ class StockfishService {
     // Increase timeout to accommodate longer thinking times
     final timeoutSeconds = switch (_level) {
       AiLevel.easy => 3,
-      AiLevel.medium => 8,
-      AiLevel.hard => 20, // Much longer for deep analysis
-      AiLevel.grandmaster => 35, // Even longer for GM level
+      AiLevel.medium => 11,
+      AiLevel.hard => 15, // Much longer for deep analysis
+      AiLevel.grandmaster => 25, // Even longer for GM level
     };
     
     final timeout = Duration(seconds: timeoutSeconds);
     
     try {
       final result = await _bestmoveWaiter!.future.timeout(timeout);
-      print('✅ Stockfish move found: $result');
+      print('Stockfish move found: $result');
       return result;
     } catch (e) {
-      print('⚠️ Stockfish timeout or error: $e');
+      print('Stockfish timeout or error: $e');
       // Return a fallback move if possible
       rethrow;
     }
@@ -138,17 +138,40 @@ class StockfishService {
     _engine!.stdin = 'ucinewgame';
     _engine!.stdin = 'isready';
     await _waitReadyOk();
-    print('🔄 Stockfish new game started');
+    print('Stockfish new game started');
   }
 
+  // CRITICAL FIX: Improved dispose method with proper cleanup
   Future<void> dispose() async {
     try {
+      print('Disposing Stockfish engine...');
+      
+      // Cancel any pending operations
+      if (_bestmoveWaiter != null && !_bestmoveWaiter!.isCompleted) {
+        _bestmoveWaiter!.complete('none'); // Complete any waiting operations
+      }
+      _bestmoveWaiter = null;
+      
+      // Cancel stream subscription
       _stdoutSub?.cancel();
       _stdoutSub = null;
-      _engine?.stdin = 'quit';
-      _engine?.dispose();
-      print('🗑️ Stockfish engine disposed');
-    } catch (_) {} finally {
+      
+      // Send quit command and dispose engine
+      if (_engine != null) {
+        try {
+          _engine?.stdin = 'quit';
+          await Future.delayed(const Duration(milliseconds: 100)); // Give time for quit
+        } catch (e) {
+          print('Error sending quit command: $e');
+        }
+        
+        _engine?.dispose();
+      }
+      
+      print('Stockfish engine disposed successfully');
+    } catch (e) {
+      print('Error during Stockfish disposal: $e');
+    } finally {
       _engine = null;
     }
   }

@@ -1,6 +1,7 @@
 // lib/screens/chess_game_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import '../services/chess_engine.dart';
 import '../services/stockfish_service.dart';
 import '../widgets/chess_board.dart';
@@ -72,9 +73,22 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
   void dispose() {
     GameTimerService.stop();
     AdTimerService.stopAdTimer();
-    _stockfish.dispose(); // STOCKFISH: Dispose engine
+    
+    // CRITICAL FIX: Ensure Stockfish is properly disposed
+    _disposeStockfish();
+    
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  // CRITICAL FIX: Separate method for Stockfish disposal
+  Future<void> _disposeStockfish() async {
+    try {
+      await _stockfish.dispose();
+      print('Stockfish disposed in game screen dispose');
+    } catch (e) {
+      print('Error disposing Stockfish: $e');
+    }
   }
 
   Future<void> _initializeAds() async {
@@ -84,26 +98,26 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       
       if (AdHelper.shouldShowAds()) {
         AdTimerService.startAdTimer();
-        print('🕐 Ad timer started for chess game');
+        print('Ad timer started for chess game');
       } else {
-        print('🚫 Ad timer not started - user has Remove Ads');
+        print('Ad timer not started - user has Remove Ads');
       }
       
       AdHelper.debugAdStatus();
       AdTimerService.debugTimerStatus();
     } catch (e) {
-      print('⚠️ Error initializing ads: $e');
+      print('Error initializing ads: $e');
     }
   }
 
   Future<void> _ensureBackgroundMusicPlaying() async {
     try {
       if (SoundService.isMusicEnabled && !SoundService.isMusicPlaying) {
-        print('🎵 Starting background music on chess game screen');
+        print('Starting background music on chess game screen');
         await SoundService.startBackgroundMusic();
       }
     } catch (e) {
-      print('⚠️ Error starting background music: $e');
+      print('Error starting background music: $e');
     }
   }
 
@@ -127,10 +141,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       _initialGameTime = _savedGameData?['gameTime'] as int?;
       
       if (_savedGameData != null) {
-        print('📄 Resuming game with difficulty: $_difficulty');
+        print('Resuming game with difficulty: $_difficulty');
         _resumeGameFromData();
       } else {
-        print('🎮 Starting new game with difficulty: $_difficulty');
+        print('Starting new game with difficulty: $_difficulty');
         _isColorSelected = false;
         // The UI will show the color selection, and the game will start from there
       }
@@ -153,30 +167,36 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         _gameStarted = true;
         _isColorSelected = true;
         
-        // STOCKFISH: Set Stockfish level for resumed game
-        _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
+        print('Successfully resumed chess game');
+        print('Playing as: ${_isPlayerWhite ? 'White' : 'Black'}');
         
-        print('✅ Successfully resumed chess game');
-        print('🎯 Playing as: ${_isPlayerWhite ? 'White' : 'Black'}');
-        
-        // NEW: Check if it's AI's turn and trigger move
-        final isAITurn = (_isPlayerWhite && _engine.currentPlayer == PieceColor.black) ||
-                        (!_isPlayerWhite && _engine.currentPlayer == PieceColor.white);
+        // CRITICAL FIX: Always initialize Stockfish fresh for resumed games
+        _initializeStockfishForNewGame().then((_) {
+          // Only check for AI turn after Stockfish is fully ready
+          final isAITurn = (_isPlayerWhite && _engine.currentPlayer == PieceColor.black) ||
+                          (!_isPlayerWhite && _engine.currentPlayer == PieceColor.white);
 
-        if (isAITurn) {
-          print('🤖 Resuming game on AI turn. Triggering AI move...');
-          // Delay to ensure UI has time to rebuild
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _playAIMoveWithStockfish();
-          });
-        }
+          if (isAITurn) {
+            print('Resuming game on AI turn. Triggering AI move...');
+            // Longer delay for resumed games to ensure everything is stable
+            Future.delayed(const Duration(milliseconds: 1000), () {
+              if (mounted && !_engine.isGameOver) {
+                _playAIMoveWithStockfish();
+              }
+            });
+          }
+        }).catchError((error) {
+          print('Error initializing Stockfish for resumed game: $error');
+          // If Stockfish initialization fails, still allow the game to continue
+          // The player can make moves, but AI won't work until manual restart
+        });
 
       } else {
-        print('⚠️ Failed to restore saved game, falling back to new game');
+        print('Failed to restore saved game, falling back to new game');
         _isColorSelected = false;
       }
     } catch (e) {
-      print('⚠️ Error resuming game: $e');
+      print('Error resuming game: $e');
       _isColorSelected = false;
     }
   }
@@ -205,7 +225,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         // REFINED: Check ad timer status on resume
         if (AdHelper.shouldShowAds() && !AdTimerService.isTimerActive) {
           AdTimerService.startAdTimer();
-          print('🔄 Ad timer resumed after app resume');
+          print('Ad timer resumed after app resume');
         }
         break;
       default:
@@ -223,10 +243,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         
         if (_adsRemoved && AdTimerService.isTimerActive) {
           AdTimerService.stopAdTimer();
-          print('🛑 Ad timer stopped - user now has Remove Ads');
+          print('Ad timer stopped - user now has Remove Ads');
         } else if (!_adsRemoved && !AdTimerService.isTimerActive) {
           AdTimerService.startAdTimer();
-          print('▶️ Ad timer started - user is now free');
+          print('Ad timer started - user is now free');
         }
       }
     } catch (e) {
@@ -248,24 +268,51 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     _engine = ChessEngine(difficulty: _difficulty);
     GameTimerService.stop();
     
-    // STOCKFISH: Set Stockfish level and start new game
-    _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
-    _stockfish.newGame();
-    
-    SoundService.playGameStart();
-    
-    _showGameTransitionAd();
-    
-    if (!_isPlayerWhite) {
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (mounted) {
+    // CRITICAL FIX: Ensure clean Stockfish initialization for new games
+    _initializeStockfishForNewGame().then((_) {
+      // Only proceed after Stockfish is fully initialized
+      if (mounted) {
+        SoundService.playGameStart();
+        _showGameTransitionAd();
+        
+        if (!_isPlayerWhite) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            if (mounted) {
+              setState(() {
+                _gameStarted = true;
+              });
+              // STOCKFISH: If player is black, AI (white) moves first
+              _playAIMoveWithStockfish();
+            }
+          });
+        } else {
+          // For white player, just set game as started
           setState(() {
             _gameStarted = true;
           });
-          // STOCKFISH: If player is black, AI (white) moves first
-          _playAIMoveWithStockfish();
         }
-      });
+      }
+    });
+  }
+
+  // CRITICAL FIX: New method for clean Stockfish initialization
+  Future<void> _initializeStockfishForNewGame() async {
+    try {
+      print('Initializing Stockfish for new game...');
+      
+      // Dispose any existing instance
+      await _stockfish.dispose();
+      
+      // Small delay to ensure cleanup is complete
+      await Future.delayed(const Duration(milliseconds: 200));
+      
+      // Initialize fresh instance
+      await _stockfish.init(level: _aiLevelFromDifficulty(_difficulty));
+      await _stockfish.newGame();
+      
+      print('Stockfish initialized for difficulty: $_difficulty');
+    } catch (e) {
+      print('Error initializing Stockfish: $e');
     }
   }
 
@@ -278,7 +325,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
   }
 
   void _onMoveMade(ChessMove move) {
-    print('🏃 Move made: ${move.fromRow},${move.fromCol} -> ${move.toRow},${move.toCol}');
+    print('Move made: ${move.fromRow},${move.fromCol} -> ${move.toRow},${move.toCol}');
 
     setState(() {
       // This ensures CapturedPiecesWidget rebuilds when pieces are captured
@@ -305,7 +352,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       GameTimerService.pause();
       AdTimerService.pauseAdTimer();
       
-      print('🏁 Game over detected, waiting for visualization...');
+      print('Game over detected, waiting for visualization...');
       
       Future.delayed(const Duration(milliseconds: 3200), () {
         if (mounted && !_isGameOverDialogShowing) {
@@ -322,7 +369,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     }
   }
 
-  // STOCKFISH: Pure Stockfish AI move logic - no heuristic fallback
+  // STOCKFISH: Pure Stockfish AI move logic - with enhanced error handling for resume
   Future<void> _playAIMoveWithStockfish() async {
     if (_aiThinking || _engine.isGameOver) return;
     
@@ -337,17 +384,54 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     });
     
     try {
-      print('🤖 thinking...');
-      final fen = _engine.toFEN();
-      print('📋 Current FEN: $fen');
+      // CRITICAL FIX: Ensure Stockfish is ready before making moves
+      if (!_stockfish.isReady) {
+        print('Stockfish not ready, reinitializing...');
+        await _initializeStockfishForNewGame();
+        
+        // Additional safety check after reinitialization
+        if (!_stockfish.isReady) {
+          print('Stockfish still not ready after reinitialization');
+          setState(() {
+            _aiThinking = false;
+          });
+          return;
+        }
+      }
       
-      final uci = await _stockfish.bestMoveForFen(fen);
-      print('🎯 Stockfish suggests: $uci');
+      print('AI thinking...');
+      final fen = _engine.toFEN();
+      print('Current FEN: $fen');
+      
+      // CRITICAL FIX: Add timeout protection for long-running operations
+      Future<String> moveRequest = _stockfish.bestMoveForFen(fen);
+      
+      // Additional timeout wrapper for resume crashes
+      String uci = await moveRequest.timeout(
+        Duration(seconds: _difficulty == Difficulty.grandmaster ? 25 : 15),
+        onTimeout: () {
+          print('AI move request timed out, stopping AI thinking');
+          throw TimeoutException('Stockfish move request timed out', Duration(seconds: 25));
+        },
+      );
+      
+      print('Stockfish suggests: $uci');
+      
+      // SAFETY CHECK: Validate UCI move format
+      if (uci == 'none' || uci.length < 4) {
+        print('Invalid UCI move received: $uci');
+        setState(() {
+          _aiThinking = false;
+        });
+        return;
+      }
       
       final ok = _engine.applyUCIMove(uci);
       if (ok) {
-        print('✅ Stockfish move applied successfully');
-        setState(() {}); // Rebuild the board
+        print('Stockfish move applied successfully');
+        setState(() {
+          _gameKey++; // This will force the ChessBoardWidget to rebuild completely
+        });
         _autoSaveGame();
         
         // Play sound for AI move
@@ -371,21 +455,33 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
           GameTimerService.pause();
           AdTimerService.pauseAdTimer();
           
-          Future.delayed(const Duration(milliseconds: 1500), () {
+          Future.delayed(const Duration(milliseconds: 4500), () {
             if (mounted && !_isGameOverDialogShowing) {
               _showGameOverDialog();
             }
           });
         }
       } else {
-        print('⚠️ Failed to apply Stockfish move: $uci');
-        // REMOVED: No fallback to heuristic AI - pure Stockfish only
-        print('🚫 No fallback AI - pure Stockfish implementation');
+        print('Failed to apply Stockfish move: $uci');
+        print('No fallback AI - pure Stockfish implementation');
       }
+    } on TimeoutException catch (e) {
+      print('Stockfish timeout exception: $e');
+      // For timeouts, just stop thinking without crashing
     } catch (e) {
-      if (kDebugMode) print('⚠️ Stockfish error: $e');
-      // REMOVED: No fallback to heuristic AI - let the game continue without AI move
-      print('🚫 Stockfish failed, no fallback - pure implementation');
+      if (kDebugMode) print('Stockfish error: $e');
+      print('Stockfish failed, no fallback - pure implementation');
+      
+      // CRITICAL FIX: For resume crashes, try to reinitialize Stockfish
+      if (e.toString().contains('timeout') || e.toString().contains('disposed')) {
+        print('Attempting to recover from Stockfish error...');
+        try {
+          await _initializeStockfishForNewGame();
+          print('Stockfish recovery successful');
+        } catch (recoveryError) {
+          print('Stockfish recovery failed: $recoveryError');
+        }
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -413,7 +509,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         SoundService.playMove();
       }
     } catch (e) {
-      print('⚠️ Error playing move sound: $e');
+      print('Error playing move sound: $e');
       SoundService.playButton();
     }
   }
@@ -431,7 +527,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
 
   void _showGameOverDialog() {
     if (_isGameOverDialogShowing) {
-      print('⚠️ Game over dialog already showing, skipping...');
+      print('Game over dialog already showing, skipping...');
       return;
     }
     
@@ -439,7 +535,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       _isGameOverDialogShowing = true;
     });
     
-    print('🎭 Showing game over dialog');
+    print('Showing game over dialog');
     
     _showGameFinishAd();
     
@@ -685,9 +781,8 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
     _engine = ChessEngine(difficulty: _difficulty);
     ChessSaveService.deleteSavedGame();
     
-    // STOCKFISH: Reset Stockfish for new game
-    _stockfish.setLevel(_aiLevelFromDifficulty(_difficulty));
-    _stockfish.newGame();
+    // CRITICAL FIX: Don't initialize Stockfish here, let _createNewGame handle it
+    // _initializeStockfishForNewGame(); // REMOVED
     
     SoundService.playGameStart();
     
@@ -696,7 +791,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
       _showGameTransitionAd();
     }
     
-    print('🔄 Game restarted with Stockfish at difficulty: $_difficulty');
+    print('Game restarted with Stockfish at difficulty: $_difficulty');
   }
 
   String _getDifficultyName(Difficulty difficulty) {
@@ -804,6 +899,11 @@ class _ChessGameScreenState extends State<ChessGameScreen> with WidgetsBindingOb
         }
         AdTimerService.pauseAdTimer();
         _autoSaveGame();
+        
+        // CRITICAL FIX: Dispose Stockfish when leaving the screen
+        await _disposeStockfish();
+        print('Stockfish disposed when leaving game screen');
+        
         return true;
       },
       child: Scaffold(

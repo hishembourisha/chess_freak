@@ -82,10 +82,10 @@ class ChessMove {
 
   @override
   String toString() {
-    return 'Move(${fromRow},${fromCol} -> ${toRow},${toCol}'
+    return 'Move($fromRow,$fromCol -> $toRow,$toCol'
         '${isCastling ? " castle" : ""}'
         '${isEnPassant ? " ep" : ""}'
-        '${promotionPiece != null ? " =${promotionPiece}" : ""})';
+        '${promotionPiece != null ? " =$promotionPiece" : ""})';
   }
 }
 
@@ -218,25 +218,25 @@ class ChessEngine {
 
     // Castling rights
     String rights = '';
-    bool _hasPiece(int r, int c, PieceType t, PieceColor col) {
+    bool hasPiece(int r, int c, PieceType t, PieceColor col) {
       final p = board[r][c];
       return p != null && p.type == t && p.color == col;
     }
     
     if (!whiteKingMoved && !whiteKingSideRookMoved && 
-        _hasPiece(7, 7, PieceType.rook, PieceColor.white)) {
+        hasPiece(7, 7, PieceType.rook, PieceColor.white)) {
       rights += 'K';
     }
     if (!whiteKingMoved && !whiteQueenSideRookMoved && 
-        _hasPiece(7, 0, PieceType.rook, PieceColor.white)) {
+        hasPiece(7, 0, PieceType.rook, PieceColor.white)) {
       rights += 'Q';
     }
     if (!blackKingMoved && !blackKingSideRookMoved && 
-        _hasPiece(0, 7, PieceType.rook, PieceColor.black)) {
+        hasPiece(0, 7, PieceType.rook, PieceColor.black)) {
       rights += 'k';
     }
     if (!blackKingMoved && !blackQueenSideRookMoved && 
-        _hasPiece(0, 0, PieceType.rook, PieceColor.black)) {
+        hasPiece(0, 0, PieceType.rook, PieceColor.black)) {
       rights += 'q';
     }
     if (rights.isEmpty) rights = '-';
@@ -262,18 +262,18 @@ class ChessEngine {
   bool applyUCIMove(String uci) {
     if (uci.length < 4) return false;
     
-    int _fileToCol(String f) => f.codeUnitAt(0) - 'a'.codeUnitAt(0);
-    int _rankToRow(int r) => 8 - r;
+    int fileToCol(String f) => f.codeUnitAt(0) - 'a'.codeUnitAt(0);
+    int rankToRow(int r) => 8 - r;
 
     final fromFile = uci[0];
     final fromRank = int.parse(uci[1]);
     final toFile   = uci[2];
     final toRank   = int.parse(uci[3]);
 
-    final fromCol = _fileToCol(fromFile);
-    final fromRow = _rankToRow(fromRank);
-    final toCol   = _fileToCol(toFile);
-    final toRow   = _rankToRow(toRank);
+    final fromCol = fileToCol(fromFile);
+    final fromRow = rankToRow(fromRank);
+    final toCol   = fileToCol(toFile);
+    final toRow   = rankToRow(toRank);
 
     print('🔄 Applying UCI move: $uci -> ($fromRow,$fromCol) to ($toRow,$toCol)');
 

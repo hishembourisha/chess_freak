@@ -58,8 +58,6 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     // Initialize cache
     _lastBoardState = _copyBoard(widget.engine.board);
     _lastGameState = widget.engine.gameState;
-    
-    // REMOVED: No auto AI move checking - let game_screen.dart handle it
   }
 
   @override
@@ -118,7 +116,17 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _lastBoardState = _copyBoard(currentBoard);
       _lastGameState = currentGameState;
       
-      // REMOVED: No auto AI move checking - pure view widget now
+      // FIXED: Auto-trigger game end visualization when game state changes to checkmate/stalemate
+      if ((currentGameState == GameState.checkmate || currentGameState == GameState.stalemate) && 
+          _lastGameState != currentGameState && 
+          !isShowingGameEndVisualization) {
+        print('Game state changed to ${currentGameState}, starting visualization...');
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            startGameEndVisualization();
+          }
+        });
+      }
     }
   }
 
@@ -166,26 +174,29 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       return;
     }
 
-    print('🎨 === GAME END VISUALIZATION START ===');
+    print('ðŸŽ¨ === GAME END VISUALIZATION START ===');
     print('Game state: ${widget.engine.gameState}');
     
     // Find the current player's king (the one who is in checkmate/stalemate)
     final kingPosition = _findKingPosition(widget.engine.currentPlayer);
     
     if (kingPosition == null) {
-      print('⚠️ Could not find king position for visualization');
+      print('âš ï¸ Could not find king position for visualization');
       return;
     }
     
     final kingRow = kingPosition['row']!;
     final kingCol = kingPosition['col']!;
     
-    print('👑 King found at: row $kingRow, col $kingCol');
+    print('ðŸ‘‘ King found at: row $kingRow, col $kingCol');
     
     // Get all squares adjacent to the king
     final adjacentSquares = _getAdjacentSquares(kingRow, kingCol);
     
-    print('🔍 Adjacent squares: $adjacentSquares');
+    // FIXED: Also highlight the king's square itself
+    adjacentSquares.add('$kingRow,$kingCol');
+    
+    print('ðŸ” Highlighted squares: $adjacentSquares');
     
     // SMOOTH: Update state only once and avoid layout thrashing
     if (mounted) {
@@ -198,8 +209,8 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       _gameEndAnimationController.repeat(reverse: true);
     }
     
-    print('✅ Game end visualization started');
-    print('🎨 === GAME END VISUALIZATION END ===');
+    print('âœ… Game end visualization started');
+    print('ðŸŽ¨ === GAME END VISUALIZATION END ===');
     
     // Wait 3 seconds before allowing the game over dialog to show
     await Future.delayed(const Duration(seconds: 3));
@@ -214,8 +225,12 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     }
   }
 
-  // REMOVED: _checkForAIMove and _makeAIMove methods
-  // The game screen now handles all AI logic through Stockfish
+  // PUBLIC: Method to manually trigger game end visualization (called from game screen)
+  void triggerGameEndVisualization() {
+    if (!isShowingGameEndVisualization) {
+      startGameEndVisualization();
+    }
+  }
 
   void _onSquareTapped(int row, int col) {
     // STABILITY: Prevent interactions during animations or game over
@@ -255,16 +270,8 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
 
             final move = widget.engine.moveHistory.last;
 
-            // Check if game ended after player move and start visualization
-            if (widget.engine.isGameOver) {
-              startGameEndVisualization().then((_) {
-                widget.onMoveMade?.call(move);
-              });
-            } else {
-              widget.onMoveMade?.call(move);
-              
-              // REMOVED: No auto AI move checking - let game_screen.dart handle it
-            }
+            // FIXED: Don't start visualization here, let didUpdateWidget handle it
+            widget.onMoveMade?.call(move);
           }
           
           // Clear selection
@@ -301,32 +308,32 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     if (piece.color == PieceColor.white) {
       switch (piece.type) {
         case PieceType.king:
-          return '♔';
+          return 'â™”';
         case PieceType.queen:
-          return '♕';
+          return 'â™•';
         case PieceType.rook:
-          return '♖';
+          return 'â™–';
         case PieceType.bishop:
-          return '♗';
+          return 'â™—';
         case PieceType.knight:
-          return '♘';
+          return 'â™˜';
         case PieceType.pawn:
-          return '♙';
+          return 'â™™';
       }
     } else {
       switch (piece.type) {
         case PieceType.king:
-          return '♚';
+          return 'â™š';
         case PieceType.queen:
-          return '♛';
+          return 'â™›';
         case PieceType.rook:
-          return '♜';
+          return 'â™œ';
         case PieceType.bishop:
-          return '♝';
+          return 'â™';
         case PieceType.knight:
-          return '♞';
+          return 'â™ž';
         case PieceType.pawn:
-          return '♟';
+          return 'â™Ÿ';
       }
     }
   }
@@ -409,42 +416,60 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
                   ),
                 ),
                 
-                // FIXED: Board coordinates (prevent layout shifts)
-                ...List.generate(8, (i) => Positioned(
-                  left: 2,
-                  top: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    alignment: Alignment.center,
-                    child: Text(
-                      '${widget.isPlayerWhite ? 8 - i : i + 1}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.brown[800],
-                      ),
-                    ),
-                  ),
-                )),
-                
-                ...List.generate(8, (i) => Positioned(
-                  left: 20 + (i * (MediaQuery.of(context).size.width - 80) / 8) + ((MediaQuery.of(context).size.width - 80) / 8 - 16) / 2,
-                  bottom: 2,
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    alignment: Alignment.center,
-                    child: Text(
-                      String.fromCharCode(97 + (widget.isPlayerWhite ? i : 7 - i)),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.brown[800],
-                      ),
-                    ),
-                  ),
-                )),
+                // FIXED: Board coordinates using LayoutBuilder for accurate sizing
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Calculate actual board dimensions
+                    final boardSize = constraints.maxWidth - 40; // Subtract left+right padding
+                    final squareSize = boardSize / 8;
+                    
+                    return Stack(
+                      children: [
+                        // Rank numbers (1-8) on the left
+                        ...List.generate(8, (i) {
+                          return Positioned(
+                            left: 2,
+                            top: 20 + (i * squareSize) + (squareSize - 20) / 2, // Center in square
+                            child: Container(
+                              width: 16,
+                              height: 20,
+                              alignment: Alignment.center,
+                              child: Text(
+                                '${widget.isPlayerWhite ? 8 - i : i + 1}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.brown[800],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                        
+                        // File letters (a-h) on the bottom
+                        ...List.generate(8, (i) {
+                          return Positioned(
+                            left: 20 + (i * squareSize) + (squareSize - 16) / 2, // Center in square
+                            bottom: 2,
+                            child: Container(
+                              width: 16,
+                              height: 16,
+                              alignment: Alignment.center,
+                              child: Text(
+                                String.fromCharCode(97 + (widget.isPlayerWhite ? i : 7 - i)),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.brown[800],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -452,11 +477,10 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
           const SizedBox(height: 8),
           
           // STABILITY: Fixed height status area to prevent layout jumping
-          Container(
+          SizedBox(
             height: 50, // Fixed height
             child: Column(
               children: [
-                // REMOVED: AI thinking indicator - that's handled by game_screen.dart now
                 if (isShowingGameEndVisualization)
                   Container(
                     padding: const EdgeInsets.all(8),
@@ -495,128 +519,162 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
     );
   }
 
-  Widget _buildSquare(int row, int col) {
-    final piece = widget.engine.board[row][col];
-    final isSelected = selectedRow == row && selectedCol == col;
-    final isValidMove = validMoves.any((move) => move[0] == row && move[1] == col);
-    final isLightSquare = (row + col) % 2 == 0;
-    final isLastMoveSquare = widget.engine.lastMove != null &&
-        ((widget.engine.lastMove!.fromRow == row && widget.engine.lastMove!.fromCol == col) ||
-         (widget.engine.lastMove!.toRow == row && widget.engine.lastMove!.toCol == col));
+Widget _buildSquare(int row, int col) {
+  final piece = widget.engine.board[row][col];
+  final isSelected = selectedRow == row && selectedCol == col;
+  final isValidMove = validMoves.any((move) => move[0] == row && move[1] == col);
+  final isLightSquare = (row + col) % 2 == 0;
+  final isLastMoveSquare = widget.engine.lastMove != null &&
+      ((widget.engine.lastMove!.fromRow == row && widget.engine.lastMove!.fromCol == col) ||
+      (widget.engine.lastMove!.toRow == row && widget.engine.lastMove!.toCol == col));
 
-    // NEW: Check highlighting - get checked king square
-    final checkedKing = widget.engine.getCheckedKingSquare();
-    final isCheckKingSquare = checkedKing != null &&
-        checkedKing[0] == row && checkedKing[1] == col;
-
-    // Check if this square should be highlighted for game end visualization
-    final squareKey = '$row,$col';
-    final isGameEndHighlighted = isShowingGameEndVisualization && highlightedSquares.contains(squareKey);
-
-    // SMOOTH: Calculate color once to prevent rapid color changes
-    Color squareColor;
-    if (isSelected) {
-      squareColor = Colors.blue[300]!;
-    } else if (isCheckKingSquare) {
-      // NEW: Subtle red warning overlay only on the checked king's square
-      squareColor = Colors.red.withOpacity(0.35);
-    } else if (isGameEndHighlighted) {
-      final baseColor = widget.engine.gameState == GameState.checkmate 
-          ? Colors.red 
-          : Colors.orange;
-      
-      // SMOOTH: More subtle pulsing effect
-      final animationValue = _gameEndAnimationController.value;
-      final intensity = 0.4 + (animationValue * 0.3); // Gentler pulse range
-      squareColor = baseColor.withOpacity(intensity);
-    } else if (isLastMoveSquare) {
-      squareColor = const Color.fromARGB(140, 174, 175, 177)!;
-    } else if (isLightSquare) {
-      squareColor = Colors.brown[50]!;
-    } else {
-      squareColor = Colors.brown[300]!;
+  final checkedKing = widget.engine.getCheckedKingSquare();
+  
+  // FIXED: Enhanced logic for checkmate/stalemate highlighting
+  bool isKingInCheckOrCheckmate = false;
+  bool isAdjacentToKingInEndGame = false;
+  
+  // Handle regular check (only king square)
+  if (checkedKing != null && checkedKing[0] == row && checkedKing[1] == col) {
+    isKingInCheckOrCheckmate = true;
+  }
+  
+  // Handle checkmate and stalemate (king + adjacent squares)
+  if (widget.engine.gameState == GameState.checkmate || widget.engine.gameState == GameState.stalemate) {
+    // Find the current player's king position
+    Map<String, int>? kingPosition;
+    for (int r = 0; r < 8; r++) {
+      for (int c = 0; c < 8; c++) {
+        final p = widget.engine.board[r][c];
+        if (p?.type == PieceType.king && p?.color == widget.engine.currentPlayer) {
+          kingPosition = {'row': r, 'col': c};
+          break;
+        }
+      }
+      if (kingPosition != null) break;
     }
+    
+    if (kingPosition != null) {
+      final kingRow = kingPosition['row']!;
+      final kingCol = kingPosition['col']!;
+      
+      // Check if this square is the king itself
+      if (row == kingRow && col == kingCol) {
+        isKingInCheckOrCheckmate = true;
+      }
+      
+      // Check if this square is adjacent to the king
+      final rowDiff = (row - kingRow).abs();
+      final colDiff = (col - kingCol).abs();
+      if (rowDiff <= 1 && colDiff <= 1 && !(rowDiff == 0 && colDiff == 0)) {
+        isAdjacentToKingInEndGame = true;
+      }
+    }
+  }
+  
+  final squareKey = '$row,$col';
+  final isGameEndHighlighted = isShowingGameEndVisualization && highlightedSquares.contains(squareKey);
 
-    return GestureDetector(
-      onTap: () => _onSquareTapped(row, col),
-      child: Container( // REMOVED: AnimatedContainer to prevent constant rebuilds
-        decoration: BoxDecoration(
-          color: squareColor,
-          border: isSelected 
-              ? Border.all(color: Colors.blue[600]!, width: 3)
-              : isGameEndHighlighted
-                  ? Border.all(
-                      color: widget.engine.gameState == GameState.checkmate 
-                          ? Colors.red[800]! 
-                          : Colors.orange[800]!, 
-                      width: 2
-                    )
-                  : isCheckKingSquare
-                      ? Border.all(color: Colors.red[800]!, width: 2)
-                      : null,
-        ),
-        child: Stack(
-          children: [
-            if (isValidMove && !isSelected && !isGameEndHighlighted && !isCheckKingSquare)
-              Center(
-                child: Container(
-                  width: piece != null ? 40 : 20,
-                  height: piece != null ? 40 : 20,
-                  decoration: BoxDecoration(
-                    color: piece != null 
-                        ? Colors.red.withOpacity(0.7)
-                        : Colors.green.withOpacity(0.7),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 2,
-                    ),
+  Color squareColor;
+  if (isSelected) {
+    squareColor = Colors.blue[300]!;
+  } else if (isGameEndHighlighted) {
+    final baseColor = widget.engine.gameState == GameState.checkmate 
+        ? Colors.red 
+        : Colors.orange;
+    
+    final animationValue = _gameEndAnimationController.value;
+    final intensity = 0.4 + (animationValue * 0.3);
+    squareColor = baseColor.withOpacity(intensity);
+  } else if (isKingInCheckOrCheckmate || isAdjacentToKingInEndGame) {
+    // FIXED: Both king and adjacent squares get red highlighting
+    squareColor = Colors.red.withOpacity(0.35);
+  } else if (isLastMoveSquare) {
+    squareColor = const Color.fromARGB(140, 174, 175, 177);
+  } else if (isLightSquare) {
+    squareColor = Colors.brown[50]!;
+  } else {
+    squareColor = Colors.brown[300]!;
+  }
+
+  return GestureDetector(
+    onTap: () => _onSquareTapped(row, col),
+    child: Container(
+      decoration: BoxDecoration(
+        color: squareColor,
+        border: isSelected 
+            ? Border.all(color: Colors.blue[600]!, width: 3)
+            : isGameEndHighlighted
+                ? Border.all(
+                    color: widget.engine.gameState == GameState.checkmate 
+                        ? Colors.red[800]! 
+                        : Colors.orange[800]!, 
+                    width: 2
+                  )
+                : (isKingInCheckOrCheckmate || isAdjacentToKingInEndGame)
+                    ? Border.all(color: Colors.red[800]!, width: 2)
+                    : null,
+      ),
+      child: Stack(
+        children: [
+          if (isValidMove && !isSelected && !isGameEndHighlighted && !isKingInCheckOrCheckmate && !isAdjacentToKingInEndGame)
+            Center(
+              child: Container(
+                width: piece != null ? 40 : 20,
+                height: piece != null ? 40 : 20,
+                decoration: BoxDecoration(
+                  color: piece != null 
+                      ? Colors.red.withOpacity(0.7)
+                      : Colors.green.withOpacity(0.7),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
                   ),
                 ),
               ),
-            
-            if (piece != null)
-              Center(
-                child: AnimatedBuilder(
-                  animation: _pieceAnimationController,
-                  builder: (context, child) {
-                    // SMOOTH: Gentler animation scaling
-                    final scale = 1.0 + (_pieceAnimationController.value * 0.05);
-                    return Transform.scale(
-                      scale: scale,
-                      child: Image.asset(
-                        _getPieceAssetPath(piece)!,
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          // Fallback to Unicode symbols
-                          return Text(
-                            _getPieceUnicode(piece),
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.white.withOpacity(0.8),
-                                  blurRadius: 2,
-                                  offset: const Offset(1, 1),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+            ),
+          
+          if (piece != null)
+            Center(
+              child: AnimatedBuilder(
+                animation: _pieceAnimationController,
+                builder: (context, child) {
+                  final scale = 1.0 + (_pieceAnimationController.value * 0.05);
+                  return Transform.scale(
+                    scale: scale,
+                    child: Image.asset(
+                      _getPieceAssetPath(piece)!,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Text(
+                          _getPieceUnicode(piece),
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                            shadows: [
+                              Shadow(
+                                color: Colors.white.withOpacity(0.8),
+                                blurRadius: 2,
+                                offset: const Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
               ),
-          ],
-        ),
+            ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Color _getStatusColor() {
     if (isShowingGameEndVisualization) {
@@ -633,7 +691,7 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
       case GameState.draw:
         return Colors.blue;
       default:
-        return Colors.green; // REMOVED: isThinking reference
+        return Colors.green;
     }
   }
 
@@ -643,8 +701,6 @@ class _ChessBoardWidgetState extends State<ChessBoardWidget>
           ? 'Checkmate!' 
           : 'Stalemate!';
     }
-    
-    // REMOVED: isThinking check
     
     switch (widget.engine.gameState) {
       case GameState.check:
